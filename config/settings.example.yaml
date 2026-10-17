@@ -2,6 +2,11 @@
 # want to override; every key has a safe default in src/jobpilot/settings.py.
 # Unknown keys are rejected on purpose so typos never go unnoticed.
 
+pipeline:
+  stages: [posts, jobs, outreach]   # what `jobpilot run` executes, in order
+
+plugins: []             # e.g. ["my_plugins.naukri"]: extra modules that register stages/commands
+
 apply:
   daily_target: 30        # targeted applications per day
   dry_run: true           # <- keep true until `jobpilot doctor` and a dry run look right

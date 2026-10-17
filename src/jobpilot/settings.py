@@ -112,7 +112,15 @@ class PathsSettings:
 
 
 @dataclass
+class PipelineSettings:
+    # Order matters: posts first (they create mail drafts), then jobs, then mail sending.
+    stages: list[str] = field(default_factory=lambda: ["posts", "jobs", "outreach"])
+
+
+@dataclass
 class Settings:
+    pipeline: PipelineSettings = field(default_factory=PipelineSettings)
+    plugins: list[str] = field(default_factory=list)   # extra python modules to import (see core/plugins.py)
     apply: ApplySettings = field(default_factory=ApplySettings)
     search: SearchSettings = field(default_factory=SearchSettings)
     llm: LLMSettings = field(default_factory=LLMSettings)

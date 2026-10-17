@@ -1,0 +1,77 @@
+# Copy to config/profile.yaml (`jobpilot init` does it) and fill in.
+# This file is the single source of truth for form answers, scoring, cover
+# text and outreach mails. config/profile.yaml is git-ignored (personal data).
+
+first_name: Jane
+last_name: Doe
+email: jane@example.com
+phone: "9000000000"          # digits only, quoted
+city: Pune
+state: Maharashtra
+country: India
+zip_code: "411001"
+linkedin_url: https://www.linkedin.com/in/your-handle
+github_url: https://github.com/your-handle
+portfolio_url: https://your-site.example
+
+total_years: 3
+current_company: Example Corp
+current_title: Software Engineer
+notice_period_days: 30
+current_ctc: 800000          # INR per annum
+expected_ctc: 1500000
+headline: "Backend-focused Full Stack Developer | Python, Node.js, AWS"
+summary: >
+  Two or three sentences used for "summary / about you" fields and as context
+  for the LLM. Only put true statements here: the LLM must never invent facts.
+cover_letter: |
+  Dear Hiring Manager,
+  ...write once, reused everywhere...
+
+# canonical skill name (lowercase, see extraction/skills.py) -> years you can honestly claim
+skills:
+  python: 3
+  node.js: 3
+  react: 2
+  postgresql: 2
+  docker: 2
+  aws: 1
+
+projects:
+  - "Short one-line description of a project (used in LLM context and mails)"
+
+# --- targeting -----------------------------------------------------------
+target_roles:                # first entry is the "primary role" used in mail subjects
+  - Backend Developer
+  - Full Stack Developer
+  - Python Developer
+  - Software Engineer
+  - Node.js Developer
+avoid_keywords: [".net", "php", "ruby", "embedded", "security clearance", "us citizen"]
+avoid_companies: []
+max_required_years: 4        # skip jobs whose headline requirement is above this
+authorized_countries: [India]
+requires_sponsorship: false
+willing_to_relocate: true
+work_modes: [onsite, hybrid, remote]
+degrees: [bachelor]          # what you actually hold: bachelor | master | phd
+demographics:                # answered only when a form asks; "Decline" is always safe
+  gender: Decline
+  ethnicity: Decline
+  veteran: "No"
+  disability: "No"
+
+# --- your own canned answers (checked BEFORE built-in rules) ---------------
+canned_answers:
+  - match: "why.*(interested|join|this role)"
+    answer: "I enjoy building scalable backend systems and this role matches my experience."
+
+# --- resumes: the best one per job is chosen by skill overlap ---------------
+resumes:
+  - path: data/resumes/backend.pdf
+    label: backend
+    focus_skills: [python, node.js, postgresql, docker, aws]
+    default: true
+  - path: data/resumes/fullstack.pdf
+    label: fullstack
+    focus_skills: [react, node.js, javascript, mongodb]

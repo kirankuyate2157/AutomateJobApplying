@@ -1,0 +1,17 @@
+$greeting
+
+I came across your hiring post and I am excited to apply for $role. I am a $headline with $years years of experience building production applications.
+
+Key skills: $skills_line
+
+Selected work:
+$projects_text
+
+My resume is attached. Profile links:
+$links_text
+
+I would welcome a chance to discuss how I can contribute. Thank you for your time.
+
+Best regards,
+$full_name
+$phone | $email

@@ -69,8 +69,10 @@ def _doctor(_ctx, args: argparse.Namespace) -> int:
     check(s.apply.dry_run, "dry_run is ON (recommended until a dry run looks right)", blocking=False)
     check(importlib.util.find_spec("selenium") is not None, "selenium installed",
           "pip install 'jobpilot[browser]'")
-    check(shutil.which("google-chrome") is not None or shutil.which("chrome") is not None or shutil.which("chromium") is not None
-          or True, "Chrome (assumed installed; Selenium Manager fetches the driver)", blocking=False)
+    has_chrome = any(shutil.which(n) for n in ("google-chrome", "chrome", "chromium", "chromium-browser"))
+    check(has_chrome, "Chrome found on PATH",
+          "not detectable on PATH (normal on Windows/macOS): just make sure Google Chrome is installed",
+          blocking=False)
     if s.llm.provider != "none":
         from ...settings import env
         check(bool(env(s.llm.api_key_env)), f"LLM key present in env {s.llm.api_key_env}",

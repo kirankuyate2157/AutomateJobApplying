@@ -96,6 +96,7 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(self.ans("Notice period (months)"), "1")
         self.assertEqual(self.ans("Can you join within 30 days?", "radio", ["Yes", "No"]), "Yes")
         self.assertEqual(self.ans("Can you join within 15 days?", "radio", ["Yes", "No"]), "No")
+        self.assertEqual(self.ans("We must fill this position urgently. Can you start immediately?", "radio", ["Yes", "No"]), "No")
 
     def test_experience(self):
         self.assertEqual(self.ans("How many years of experience do you have with Python?", "number"), "3")

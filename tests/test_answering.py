@@ -12,12 +12,12 @@ from jobpilot.storage.db import Repository
 
 def make_profile(**kw):
     base = dict(
-        first_name="Kiran", last_name="Kuyate", email="k@example.com", phone="9000000000",
+        first_name="Kiran", last_name="Kuyate", email="kiranrkuyate2021@gmail.com", phone="7083418824",
         city="Mumbai", state="Maharashtra", country="India", zip_code="400708",
         total_years=3, current_company="NeoSoft", current_title="Software Engineer",
-        notice_period_days=30, current_ctc=750000, expected_ctc=1800000,
+        notice_period_days=30, current_ctc=790000, expected_ctc=1800000,
         skills={"python": 3, "node.js": 3, "docker": 2}, degrees=["bachelor"],
-        linkedin_url="https://linkedin.com/in/k", demographics={"gender": "Male", "disability": "No"},
+        linkedin_url="https://linkedin.com/in/kirankuyate", demographics={"gender": "Male", "disability": "No"},
         canned_answers=[{"match": "why.*interested", "answer": "Great fit for my backend skills."}])
     base.update(kw)
     return Profile.from_dict(base)
@@ -73,7 +73,7 @@ class RuleTests(unittest.TestCase):
     def test_identity(self):
         self.assertEqual(self.ans("First name"), "Kiran")
         self.assertEqual(self.ans("Last name"), "Kuyate")
-        self.assertEqual(self.ans("Mobile phone number"), "9000000000")
+        self.assertEqual(self.ans("Mobile phone number"), "7083418824")
         self.assertEqual(self.ans("Phone country code", "select", ["Select an option", "India (+91)", "US (+1)"]), "India (+91)")
         self.assertEqual(self.ans("Email address", "select", ["Select an option", "other@x.com"]), "other@x.com")
         self.assertEqual(self.ans("City"), "Mumbai")

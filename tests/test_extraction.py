@@ -60,5 +60,18 @@ class ContactTests(unittest.TestCase):
         self.assertTrue(a.is_hiring)
 
 
+
+class TimeParseTests(unittest.TestCase):
+    def test_parse(self):
+        from datetime import datetime, timedelta
+        from jobpilot.extraction.timeparse import parse_relative_time
+        now = datetime(2026, 10, 17, 12, 0)
+        self.assertEqual(parse_relative_time("Reposted 2 weeks ago", now), now - timedelta(weeks=2))
+        self.assertEqual(parse_relative_time("3 hours ago", now), now - timedelta(hours=3))
+        self.assertEqual(parse_relative_time("5m", now), now - timedelta(minutes=5))
+        self.assertEqual(parse_relative_time("1mo • Edited", now), now - timedelta(days=30))
+        self.assertIsNone(parse_relative_time("Promoted", now))
+
+
 if __name__ == "__main__":
     unittest.main()

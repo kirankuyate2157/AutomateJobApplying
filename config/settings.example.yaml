@@ -1,0 +1,41 @@
+# Copy to config/settings.yaml (`jobpilot init` does it). Only list what you
+# want to override; every key has a safe default in src/jobpilot/settings.py.
+# Unknown keys are rejected on purpose so typos never go unnoticed.
+
+apply:
+  daily_target: 30        # targeted applications per day
+  dry_run: true           # <- keep true until `jobpilot doctor` and a dry run look right
+  min_score: 50           # raise to 60-70 for stricter targeting
+  max_per_hour: 12
+  delay_min_s: 3
+  delay_max_s: 9
+
+search:
+  locations: ["India"]    # e.g. ["Pune", "Mumbai", "Bengaluru", "Remote"]
+  freshness_seconds: 86400          # newest first: last 24h
+  fallback_freshness_seconds: 604800  # only used if the 24h pass cannot fill the quota
+  experience_levels: [2, 3, 4]      # 2 Entry, 3 Associate, 4 Mid-Senior
+  extra_keywords: []
+
+llm:
+  provider: none          # none | gemini | openai (openai-compatible: Groq, OpenRouter, Ollama...)
+  model: gemini-flash-latest
+  api_key_env: GEMINI_API_KEY
+  # Free/local options: Gemini free tier, Groq free tier, or Ollama on localhost:
+  #   provider: openai
+  #   base_url: http://localhost:11434/v1
+  #   model: llama3.1
+  #   api_key_env: OLLAMA_API_KEY   # any non-empty value
+
+mail:
+  enabled: false
+  auto_send: false        # false = review drafts, then `jobpilot mail approve`
+  daily_cap: 40
+
+posts:
+  enabled: true
+  date_filter: past-24h
+  max_scrolls: 12
+
+browser:
+  headless: false         # first runs: watch it work

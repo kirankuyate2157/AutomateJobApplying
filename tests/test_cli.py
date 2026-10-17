@@ -67,5 +67,28 @@ class CliEndToEnd(unittest.TestCase):
         self.assertTrue(list(Path("data/exports").glob("*.xlsx")))
 
 
+
+class ProjectPluginTests(unittest.TestCase):
+    def test_config_plugin_registers_command_and_stage(self):
+        with tempfile.TemporaryDirectory() as d:
+            old = os.getcwd()
+            os.chdir(d)
+            try:
+                Path("config").mkdir()
+                Path("config/settings.yaml").write_text("plugins: [demo_plugin_xyz]\n", encoding="utf-8")
+                Path("demo_plugin_xyz.py").write_text(
+                    "from jobpilot.core.registry import commands\n"
+                    "from jobpilot.core.command import Command\n"
+                    "commands.register('hello-xyz')(Command('hello-xyz', 'demo', "
+                    "lambda ctx, args: print('hello from plugin') or 0, needs_context=False))\n", encoding="utf-8")
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    code = cli.main(["--config", "config/settings.yaml", "hello-xyz"])
+                self.assertEqual(code, 0)
+                self.assertIn("hello from plugin", buf.getvalue())
+            finally:
+                os.chdir(old)
+
+
 if __name__ == "__main__":
     unittest.main()

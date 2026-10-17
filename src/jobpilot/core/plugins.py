@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import sys
 from importlib import metadata
 
 from ..settings import Settings
@@ -35,6 +36,8 @@ BUILTIN_MODULES = (
 def load_plugins(settings: Settings | None = None) -> list[str]:
     """Import all modules; returns the names that failed (already logged)."""
     failed: list[str] = []
+    if settings is not None and str(settings.root) not in sys.path:
+        sys.path.insert(0, str(settings.root))     # lets `plugins: [my_plugins.naukri]` import from the project folder
     names = list(BUILTIN_MODULES) + (list(settings.plugins) if settings else [])
     for name in names:
         try:

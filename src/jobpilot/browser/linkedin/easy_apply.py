@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from selenium.common.exceptions import WebDriverException
@@ -22,7 +21,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
 from ...core.context import AppContext
-from ...domain.models import Job
+from ...domain.models import ApplyResult, Job
 from ...exceptions import DailyLimitReached
 from ..helpers import find_first, page_text_contains, pause, safe_click
 from . import forms
@@ -30,15 +29,6 @@ from . import selectors as S
 
 log = logging.getLogger(__name__)
 MAX_STEPS = 12          # an Easy Apply flow is normally 2-6 steps
-
-
-@dataclass
-class ApplyResult:
-    status: str                      # applied | dry_run_ok | needs_review | external | failed
-    reason: str = ""
-    resume: str = ""
-    external_url: str = ""
-    pending: list[str] = field(default_factory=list)
 
 
 class EasyApplier:

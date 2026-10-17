@@ -293,6 +293,20 @@ class Repository:
             (_now(), applied, skipped, failed, review, notes, run_id))
         self.conn.commit()
 
+    # ------------------------------------------------- outreach drafting helpers
+    def unmailed_email_contacts(self) -> list[sqlite3.Row]:
+        """Email contacts that have no mail_queue row yet (i.e. still to be drafted)."""
+        return self.conn.execute(
+            """SELECT c.value, c.source_type, c.source_id FROM contacts c
+               LEFT JOIN mail_queue m ON m.to_email = c.value
+               WHERE c.kind='email' AND m.id IS NULL ORDER BY c.id""").fetchall()
+
+    def get_post(self, post_id: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM posts WHERE post_id=?", (post_id,)).fetchone()
+
+    def get_job(self, job_id: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+
     # --------------------------------------------------------------- generic
     def fetch_table(self, table: str) -> tuple[list[str], list[tuple[Any, ...]]]:
         """Whitelisted table dump used by exporters and the UI."""

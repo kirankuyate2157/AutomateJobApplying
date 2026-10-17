@@ -70,3 +70,13 @@ class Contact:
     kind: str                       # email | phone | form | ats | link
     value: str
     context: str = ""               # short snippet around the match, for review
+
+
+@dataclass
+class ApplyResult:
+    """Outcome of one application attempt (returned by any Applier)."""
+    status: str                      # applied | dry_run_ok | needs_review | external | failed
+    reason: str = ""
+    resume: str = ""
+    external_url: str = ""
+    pending: list[str] = field(default_factory=list)   # unanswered required questions

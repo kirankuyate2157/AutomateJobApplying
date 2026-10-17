@@ -1,0 +1,19 @@
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# --- Secrets & personal data: NEVER commit these ---
+# WHY: the legacy project leaked an API key via a tracked secrets.py. Keys now
+# live in .env (ignored) and personal details in config/profile.yaml (ignored).
+.env
+config/profile.yaml
+config/settings.yaml
+
+# --- Runtime output (database, exports, browser profile, logs) ---
+data/
+logs/

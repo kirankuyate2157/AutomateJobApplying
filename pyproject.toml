@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jobpilot"
+version = "0.1.0"
+description = "Targeted, auditable LinkedIn job-application and hiring-post outreach automation"
+requires-python = ">=3.10"
+# WHY minimal core deps: everything that touches a browser, web UI or LLM SDK
+# is an optional extra, so the core (storage, scoring, answering) stays light
+# and easy to test.
+dependencies = ["PyYAML>=6.0", "requests>=2.31", "openpyxl>=3.1"]
+
+[project.optional-dependencies]
+browser = ["selenium>=4.20"]      # Selenium Manager downloads chromedriver itself
+ui = ["flask>=3.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+jobpilot = "jobpilot.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

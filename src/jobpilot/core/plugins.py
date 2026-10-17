@@ -28,6 +28,7 @@ BUILTIN_MODULES = (
     "jobpilot.features.outreach",
     "jobpilot.features.answers",
     "jobpilot.features.reports",
+    "jobpilot.features.system",
 )
 
 

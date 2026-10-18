@@ -12,9 +12,14 @@ old bot, which worked against the live site.
 from ..helpers import CLS, CSS, XP
 
 # ------------------------------------------------------------------ jobs list
-JOB_CARDS = [XP("//li[@data-occludable-job-id]")]                         # [legacy-proven]
-CARD_LINK = [XP(".//a")]                                                  # [legacy-proven]
-CARD_SUBTITLE = [CLS("artdeco-entity-lockup__subtitle")]                  # "Company · Location (Remote)" [legacy-proven]
+JOB_CARDS = [
+    XP("//li[@data-occludable-job-id]"),                                  # [legacy-proven]
+    XP("//div[.//a[contains(@href, '/jobs/view/')]][.//button[contains(@aria-label, 'Apply')]]"
+       "[not(.//div[.//a[contains(@href, '/jobs/view/')]][.//button[contains(@aria-label, 'Apply')]])]"),
+]
+CARD_LINK = [XP(".//a[contains(@href, '/jobs/view/')]"), XP(".//a")]     # [legacy-proven]
+CARD_SUBTITLE = [CLS("artdeco-entity-lockup__subtitle"), CSS("a[href*='/company/']")]
+CARD_META = [XP(".//p[.//span[contains(normalize-space(), ' ago')]]")]
 CARD_STATE = [CLS("job-card-container__footer-job-state")]                # "Applied" [legacy-proven]
 JOB_DESCRIPTION = [CLS("jobs-box__html-content"), CSS("#job-details"), CLS("jobs-description__content")]
 TOP_CARD = [CLS("job-details-jobs-unified-top-card__primary-description-container"),
@@ -25,10 +30,14 @@ HIRER_CARD = [CLS("hirer-card__hirer-information")]                       # [leg
 
 # ---------------------------------------------------------------- easy apply
 EASY_APPLY_BUTTON = [
+    XP(".//button[contains(@aria-label,'Easy Apply')]"),
     XP(".//button[contains(@class,'jobs-apply-button') and contains(@aria-label,'Easy')]"),   # [legacy-proven]
     XP("//button[contains(@class,'jobs-apply-button')][.//span[contains(.,'Easy Apply')]]"),
 ]
-ANY_APPLY_BUTTON = [XP(".//button[contains(@class,'jobs-apply-button')]")]
+ANY_APPLY_BUTTON = [
+    XP(".//button[contains(@aria-label,'Apply')]"),
+    XP(".//button[contains(@class,'jobs-apply-button')]"),
+]
 MODAL = [CLS("jobs-easy-apply-modal"), CSS("div[role='dialog']")]         # [legacy-proven]
 FORM_ELEMENTS = [XP(".//div[@data-test-form-element]")]                   # [legacy-proven]
 RADIO_FIELDSET = XP('.//fieldset[@data-test-form-builder-radio-button-form-component="true"]')  # [legacy-proven]
@@ -41,6 +50,30 @@ FILE_INPUT = [XP(".//input[@type='file']")]
 FIELD_ERRORS = [XP(".//*[contains(@class,'artdeco-inline-feedback--error')]")]
 FOLLOW_CHECKBOX_LABEL = [XP(".//label[@for='follow-company-checkbox']")]  # [legacy-proven]
 FOLLOW_CHECKBOX = [XP(".//input[@id='follow-company-checkbox']")]
+
+
+def job_card(job_id: str):
+    if not job_id.isdecimal():
+        return []
+    href = f"/jobs/view/{job_id}"
+    return [
+        XP(f"//div[.//a[contains(@href, '{href}')]][.//button[contains(@aria-label, 'Apply')]]"
+           f"[not(.//div[.//a[contains(@href, '{href}')]][.//button[contains(@aria-label, 'Apply')]])]"),
+        XP(f"//li[@data-occludable-job-id='{job_id}']"),
+    ]
+
+
+def job_apply_buttons(job_id: str, easy_only: bool = False):
+    cards = job_card(job_id)
+    if not cards:
+        return []
+    button_label = "Easy Apply" if easy_only else "Apply"
+    legacy_match = ("[contains(@aria-label,'Easy') or .//span[contains(.,'Easy Apply')]]"
+                    if easy_only else "")
+    return [
+        XP(f"{cards[0][1]}//button[contains(@aria-label, '{button_label}')]"),
+        XP(f"//li[@data-occludable-job-id='{job_id}']//button[contains(@class,'jobs-apply-button')]{legacy_match}"),
+    ]
 
 
 def button(*labels: str):

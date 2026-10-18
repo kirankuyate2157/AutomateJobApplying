@@ -8,6 +8,7 @@ behind a clean generator interface.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import Iterator
 
@@ -55,7 +56,15 @@ class LinkedInJobSource:
     # ------------------------------------------------------------- internals
     def _open_card(self, card, spec: SearchSpec) -> Job | None:
         d = self.driver
-        job_id = card.get_attribute("data-occludable-job-id")
+        link = find_first(card, S.CARD_LINK)
+        if link is None:
+            return None
+        href = link.get_attribute("href") or ""
+        job_id = (card.get_attribute("data-occludable-job-id")
+                  or card.get_attribute("data-job-id") or "")
+        if not job_id:
+            match = re.search(r"/jobs/view/(\d+)", href)
+            job_id = match.group(1) if match else ""
         if not job_id:
             return None
         scroll_into_view(d, card)
@@ -63,11 +72,9 @@ class LinkedInJobSource:
         if state is not None and text_of(state).lower() == "applied":
             return None                                       # LinkedIn already shows it as applied
 
-        link = find_first(card, S.CARD_LINK)
-        if link is None:
-            return None
         title = text_of(link).split("\n")[0].strip()
         company, location, style = self._subtitle(card)
+        easy_apply = find_first(card, S.EASY_APPLY_BUTTON) is not None
         if not safe_click(d, link):
             return None
         pause(0.8, 1.6)
@@ -90,8 +97,7 @@ class LinkedInJobSource:
         return Job(
             job_id=job_id, title=title, company=company, location=location, work_style=style,
             description=text_of(description) if description is not None else "",
-            url=f"https://www.linkedin.com/jobs/view/{job_id}", posted_at=posted_at,
-            easy_apply=find_first(d, S.EASY_APPLY_BUTTON) is not None,
+            url=f"https://www.linkedin.com/jobs/view/{job_id}", posted_at=posted_at, easy_apply=easy_apply,
             hr_name=hr_name, hr_link=hr_link, query=spec.key)
 
     @staticmethod
@@ -100,6 +106,10 @@ class LinkedInJobSource:
         el = find_first(card, S.CARD_SUBTITLE)
         raw = text_of(el) if el is not None else ""
         company, _, rest = raw.partition(" · ")
+        if not rest:
+            meta = find_first(card, S.CARD_META)
+            if meta is not None:
+                rest = text_of(meta).split("·", 1)[0].strip()
         style = ""
         if rest.endswith(")") and "(" in rest:
             rest, _, style = rest[:-1].rpartition("(")

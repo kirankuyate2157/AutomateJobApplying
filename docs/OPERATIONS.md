@@ -3,12 +3,12 @@
 ## First week plan
 1. **Day 1**: `init`, fill profile, `doctor`, `answers import-legacy`, `jobpilot run` (dry). Watch the browser. Fix selectors if needed.
 2. **Day 2**: answer pending questions (`jobpilot ui` is easiest), dry run again; `needs_review` should shrink.
-3. **Day 3+**: `jobpilot run --live --only jobs` with `apply.daily_target: 10`, then raise to 30.
+3. **Day 3+**: `jobpilot --live run --only jobs` with `apply.daily_target: 10`, then raise to 30. The global `--live` option must come before the command; `jobpilot apply` also runs only the jobs stage.
 4. Enable posts (already on) and review contacts/mail drafts before enabling `mail.enabled`.
 
 ## Scheduling
-* Linux/macOS cron (weekdays 10:00): `0 10 * * 1-5 cd /path/to/jobpilot && .venv/bin/jobpilot run --live`
-* Windows Task Scheduler: action `C:\path\jobpilot\.venv\Scripts\jobpilot.exe`, args `run --live`, start in the project folder.
+* Linux/macOS cron (weekdays 10:00): `0 10 * * 1-5 cd /path/to/jobpilot && .venv/bin/jobpilot --live run`
+* Windows Task Scheduler: action `C:\path\jobpilot\.venv\Scripts\jobpilot.exe`, args `--live run`, start in the project folder.
 The first run needs a visible browser to log in; afterwards `browser.headless: true` is possible (the profile keeps the session).
 
 ## Tuning targeting

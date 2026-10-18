@@ -23,7 +23,7 @@ from selenium.webdriver.common.keys import Keys
 from ...core.context import AppContext
 from ...domain.models import ApplyResult, Job
 from ...exceptions import DailyLimitReached
-from ..helpers import find_first, page_text_contains, pause, safe_click
+from ..helpers import find_first, page_text_contains, pause, safe_click, scroll_into_view
 from . import forms
 from . import selectors as S
 
@@ -38,9 +38,10 @@ class EasyApplier:
     # ----------------------------------------------------------------- api
     def apply(self, job: Job, resume_path: str = "") -> ApplyResult:
         d = self.driver
-        button = find_first(d, S.EASY_APPLY_BUTTON, timeout=2)
+        button = find_first(d, S.job_apply_buttons(job.job_id, easy_only=True), timeout=2)
         if button is None:
             return self._external(job)
+        scroll_into_view(d, button)
         if not safe_click(d, button):
             return ApplyResult("failed", "could not click Easy Apply")
         modal = find_first(d, S.MODAL, timeout=6)
@@ -141,11 +142,12 @@ class EasyApplier:
     def _external(self, job: Job) -> ApplyResult:
         """No Easy Apply: record the external application URL (opened in a new tab)."""
         d = self.driver
-        btn = find_first(d, S.ANY_APPLY_BUTTON, timeout=1)
+        btn = find_first(d, S.job_apply_buttons(job.job_id), timeout=1)
         if btn is None:
             return ApplyResult("external", "no apply button")
         origin, before = d.current_window_handle, set(d.window_handles)
         try:
+            scroll_into_view(d, btn)
             if safe_click(d, btn):
                 pause(1.5, 2.5)
                 new = [h for h in d.window_handles if h not in before]

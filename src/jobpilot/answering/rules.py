@@ -129,6 +129,8 @@ def _notice(c, m):
     if mm := re.search(r"(within|less than|under|up ?to|maximum|max|in)\s*(\d+)\s*(day|week|month)", low):
         return ynq(c, days <= int(mm.group(2)) * _DAYS_PER[mm.group(3)])
     if "immediate" in low and re.search(r"\b(can|are|do|would|will|able)\b.{0,30}\byou\b|\byou\b.{0,30}\b(can|able)\b", low):
+        # < 15 days = immediate joiner; < 30 days = can join soon (handled by
+        # "within X days" regex match above)
         return ynq(c, days <= 15)
     if c.kind in ("select", "radio") and c.options:
         return None            # bucket labels vary a lot: let the user decide once (cached)

@@ -81,8 +81,8 @@ def compose_application(profile: Profile, to_email: str, role: str | None = None
         first_name=profile.first_name, years=f"{profile.total_years:g}",
         headline=profile.headline or profile.current_title or "software engineer",
         skills_line=", ".join(top_skills) or "see resume",
-        projects_text="\n".join(f"- {p}" for p in profile.projects[:4]) or "- see resume",
-        projects_html="".join(f"<li>{html.escape(p)}</li>" for p in profile.projects[:4]) or "<li>see resume</li>",
+        projects_text="\n".join(f"- {p.name}" if hasattr(p, 'name') else f"- {p}" for p in profile.projects[:4]) or "- see resume",
+        projects_html="".join(f"<li>{html.escape(p.name if hasattr(p, 'name') else p)}</li>" for p in profile.projects[:4]) or "<li>see resume</li>",
         links_text="\n".join(f"- {n}: {u}" for n, u in links) or "- see resume",
         links_html="".join(f'<li>{n}: <a href="{html.escape(u)}">{html.escape(u)}</a></li>' for n, u in links),
         email=profile.email, phone=profile.phone)

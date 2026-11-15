@@ -36,6 +36,8 @@ class ApplySettings:
     max_pages_per_query: int = 4      # result pages scanned per search
     unfollow_company: bool = True     # untick "follow company" on submit
     overwrite_prefilled: bool = False # keep values LinkedIn pre-filled (phone/email)
+    manual_control: bool = False      # wait for user to manually click Easy Apply on each job
+    manual_browse_only: bool = False  # skip searching entirely; just wait for you to click Easy Apply
 
 
 @dataclass

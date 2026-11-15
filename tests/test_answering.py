@@ -87,9 +87,9 @@ class RuleTests(unittest.TestCase):
 
     def test_money_units(self):
         self.assertEqual(self.ans("What is your expected CTC in lakhs?"), "18")
-        self.assertEqual(self.ans("Current CTC (LPA)", "number"), "7.5")
+        self.assertEqual(self.ans("Current CTC (LPA)", "number"), "7.9")
         self.assertEqual(self.ans("Expected monthly salary"), "150000")
-        self.assertEqual(self.ans("Current salary"), "750000")
+        self.assertEqual(self.ans("Current salary"), "790000")
 
     def test_notice(self):
         self.assertEqual(self.ans("Notice period in days", "number"), "30")

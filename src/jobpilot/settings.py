@@ -97,6 +97,7 @@ class PostSettings:
     max_posts_per_keyword: int = 60
     min_hiring_score: int = 3
     ai_extract: bool = False          # True = also refine company/requirements via LLM (needs llm provider + key)
+    analyze_each_page: bool = False   # True = open each post's own page for full text + comments (slower, more emails)
 
 
 @dataclass

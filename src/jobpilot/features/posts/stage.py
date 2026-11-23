@@ -5,7 +5,8 @@ import logging
 
 from ...core.command import Command
 from ...core.context import AppContext
-from ...core.registry import commands, stages
+from ...core.registry import commands
+from ...core.registry import stages
 from ...core.stage import StageResult
 from .runner import run_posts
 
@@ -14,7 +15,9 @@ log = logging.getLogger(__name__)
 
 class PostsStage:
     name = "posts"
-    description = "Scroll LinkedIn hiring posts, extract emails/phones/forms into the contacts table"
+    description = (
+        "Scroll LinkedIn hiring posts, extract emails/phones/forms into the contacts table"
+    )
 
     def run(self, ctx: AppContext) -> StageResult:
         if not ctx.settings.posts.enabled:
@@ -29,15 +32,27 @@ class PostsStage:
         if ctx.settings.posts.ai_extract:
             if ctx.llm is not None:
                 from ...extraction.contacts import AIPostExtractor
+
                 ai_extractor = AIPostExtractor(ctx.llm, ctx.profile.llm_context())
             else:
-                log.info("posts.ai_extract is on but no LLM key configured: using regex-only extraction")
+                log.info(
+                    "posts.ai_extract is on but no LLM key configured: using regex-only extraction"
+                )
 
-        s = run_posts(ctx.repo, LinkedInPostSource(ctx), ctx.settings.posts,
-                      ai_extractor=ai_extractor)
-        return StageResult(self.name, True, {"scanned": s.scanned, "hiring": s.hiring,
-                                             "new_contacts": s.new_contacts, "duplicates": s.duplicates,
-                                             "ai_extract": bool(ai_extractor)})
+        s = run_posts(
+            ctx.repo, LinkedInPostSource(ctx), ctx.settings.posts, ai_extractor=ai_extractor
+        )
+        return StageResult(
+            self.name,
+            True,
+            {
+                "scanned": s.scanned,
+                "hiring": s.hiring,
+                "new_contacts": s.new_contacts,
+                "duplicates": s.duplicates,
+                "ai_extract": bool(ai_extractor),
+            },
+        )
 
 
 stages.register("posts")(PostsStage())
@@ -54,4 +69,6 @@ def _run(ctx: AppContext, args: argparse.Namespace) -> int:
     return 0
 
 
-commands.register("posts")(Command("posts", "Scan LinkedIn hiring posts for contacts", _run, _configure))
+commands.register("posts")(
+    Command("posts", "Scan LinkedIn hiring posts for contacts", _run, _configure)
+)

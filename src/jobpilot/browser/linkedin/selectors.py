@@ -198,3 +198,14 @@ POST_SEE_MORE = [CSS("button.feed-shared-inline-show-more-text__see-more-less-to
                  XP(".//button[contains(normalize-space(.),'more') and contains(@class,'see-more')]"),
                  XP(".//button[normalize-space(.)='…more' or normalize-space(.)='...more']")]
 PostLinks = [CSS("a[href]")]
+
+# ---------------------------------------------------------------- single post page
+# When we open a post's own URL (feed/update/...), LinkedIn renders the full
+# post plus comments. Comments often carry the real "send CV to..." email that
+# the post body truncates, so deep per-page analysis is worth one extra load.
+POST_PAGE_TEXT = [CSS("div.update-components-text"), CSS("div.feed-shared-update-v2__content"),
+                  CSS("span.break-words"), CSS("article div[dir='auto']")]
+POST_PAGE_COMMENTS = [CSS("div.comments-comments-list"),
+                      CSS("div.feed-shared-social-bar__social-counts")]
+POST_COMMENT_ITEM = [CSS("li.comments-comment-item"), CSS("div.comments-comment-entity")]
+POST_COMMENT_TEXT = [CSS(".comments-comment-item__main-content"), CSS("span.break-words")]

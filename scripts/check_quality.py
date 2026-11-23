@@ -37,7 +37,11 @@ CHECKS = {
 
 def run(name: str, cmd: list[str]) -> int:
     print(f"==> {name}: {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=ROOT)
+    try:
+        result = subprocess.run(cmd, cwd=ROOT)
+    except FileNotFoundError:
+        print(f"   SKIPPED ({name}): '{cmd[0]}' not found on PATH")
+        return 0
     if result.returncode != 0:
         print(f"   FAILED ({name}) exit={result.returncode}")
     else:

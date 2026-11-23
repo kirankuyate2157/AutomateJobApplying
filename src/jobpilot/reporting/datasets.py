@@ -45,6 +45,18 @@ def build_datasets(repo: Repository) -> dict[str, Dataset]:
         "hiring_posts": _query(repo, """
             SELECT post_id, author, posted_text, roles, hiring_score, url, query, first_seen, text
             FROM posts WHERE is_hiring=1 ORDER BY first_seen DESC"""),
+        "hiring_contacts": _query(repo, """
+            SELECT c.value AS email,
+                   p.company AS company,
+                   p.requirements AS requirements,
+                   p.author AS author,
+                   p.url AS source_url,
+                   p.query AS search_keyword,
+                   c.context AS context
+            FROM contacts c
+            JOIN posts p ON c.source_type='post' AND p.post_id=c.source_id
+            WHERE c.kind='email'
+            ORDER BY c.id DESC"""),
         "mail_queue": _query(repo, """
             SELECT id, to_email, status, subject, resume_path, error, created_at, sent_at
             FROM mail_queue ORDER BY id DESC"""),

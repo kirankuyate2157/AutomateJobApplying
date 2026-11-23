@@ -58,7 +58,12 @@ MIGRATIONS: list[str] = [
         dry_run INTEGER, applied INTEGER DEFAULT 0, skipped INTEGER DEFAULT 0,
         failed INTEGER DEFAULT 0, review INTEGER DEFAULT 0, notes TEXT);
     """,
-    # ---- v2+ : add new migrations below, never edit the ones above ------- #
+    # ---- v2 : hiring-post company + requirements -------------------------- #
+    """
+    ALTER TABLE posts ADD COLUMN company TEXT;
+    ALTER TABLE posts ADD COLUMN requirements TEXT;
+    """,
+    # ---- v3+ : add new migrations below, never edit the ones above ------- #
 ]
 
 # jobs in these states are never reconsidered (dry_run_ok is handled specially)
@@ -207,12 +212,14 @@ class Repository:
 
     # ----------------------------------------------------------------- posts
     def add_post(self, post_id: str, url: str, author: str, text: str, posted_text: str,
-                 query: str, is_hiring: bool, hiring_score: int, roles: Iterable[str]) -> bool:
+                 query: str, is_hiring: bool, hiring_score: int, roles: Iterable[str],
+                 company: str = "", requirements: str = "") -> bool:
         cur = self.conn.execute(
             """INSERT OR IGNORE INTO posts(post_id,url,author,text,posted_text,query,is_hiring,
-                                           hiring_score,roles,first_seen) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                                           hiring_score,roles,company,requirements,first_seen)
+                                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             (post_id, url, author, text, posted_text, query, int(is_hiring), hiring_score,
-             ", ".join(roles), _now()))
+             ", ".join(roles), company, requirements, _now()))
         self.conn.commit()
         return cur.rowcount > 0
 

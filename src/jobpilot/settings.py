@@ -96,6 +96,7 @@ class PostSettings:
     max_scrolls: int = 12
     max_posts_per_keyword: int = 60
     min_hiring_score: int = 3
+    ai_extract: bool = False          # True = also refine company/requirements via LLM (needs llm provider + key)
 
 
 @dataclass

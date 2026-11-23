@@ -59,6 +59,68 @@ class ContactTests(unittest.TestCase):
         self.assertEqual(a.emails, ["cv@firm.in"])
         self.assertTrue(a.is_hiring)
 
+    def test_extract_company(self):
+        from jobpilot.extraction.contacts import extract_company
+        self.assertEqual(extract_company("We are hiring at Acme Systems! Send CV to hr@acme.com"), "acme systems")
+        self.assertEqual(extract_company("Acme Technologies is hiring a Python developer"), "acme technologies")
+        self.assertEqual(extract_company("Hiring Node devs, dm us"), "")
+
+    def test_extract_requirements(self):
+        from jobpilot.extraction.contacts import extract_requirements
+        r = extract_requirements("Python Developer, 3-5 yrs experience, React and AWS")
+        self.assertEqual(r["years"], "3.0-5.0 years")
+        self.assertIn("python", r["skills"])
+        self.assertIn("react", r["skills"])
+        self.assertIn("aws", r["skills"])
+        r = extract_requirements("No numbers or skills here")
+        self.assertIsNone(r["years"])
+        self.assertEqual(r["skills"], [])
+
+    def test_analyze_post_company_requirements(self):
+        a = analyze_post("We are hiring at Acme Systems! Python Developer (3-5 yrs experience), "
+                         "React, AWS. Send CV to talent@acme.com")
+        self.assertEqual(a.company, "acme systems")
+        self.assertIn("3.0-5.0 years", a.requirements)
+        self.assertIn("python", a.requirements)
+        self.assertIn("react", a.requirements)
+        self.assertIn("aws", a.requirements)
+        self.assertEqual(a.emails, ["talent@acme.com"])
+
+    def test_ai_extractor_no_llm_returns_empty(self):
+        from jobpilot.extraction.contacts import AIPostExtractor
+        ext = AIPostExtractor(None, "profile context")
+        self.assertEqual(ext.extract("We are hiring at X. email a@b.com"), {})
+
+
+class LLMClientStub:
+    def __init__(self, text: str):
+        self.text = text
+    def complete(self, prompt: str) -> str:
+        return self.text
+
+
+class AITests(unittest.TestCase):
+    def test_ai_fills_missing_company_requirements(self):
+        from jobpilot.extraction.contacts import AIPostExtractor, analyze_post
+        stub = LLMClientStub('{"company": "AI Labs", "requirements": "5+ years | python, llm", "emails": []}')
+        ext = AIPostExtractor(stub, "profile context")
+        ai = ext.extract("We are hiring a Python developer. email hr@ailabs.com")
+        self.assertEqual(ai["company"], "ai labs")
+        self.assertEqual(ai["requirements"], "5+ years | python, llm")
+
+    def test_analyze_post_uses_ai_when_regex_missing(self):
+        from jobpilot.extraction.contacts import AIPostExtractor, analyze_post
+        stub = LLMClientStub('{"company": "AI Labs", "requirements": "5+ years | python, llm", "emails": []}')
+        ext = AIPostExtractor(stub, "profile context")
+        a = analyze_post("We are hiring. email hr@ailabs.com", ai_extractor=ext)
+        self.assertEqual(a.company, "ai labs")
+        self.assertIn("5+ years", a.requirements)
+        self.assertIn("python", a.requirements)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
 
 
 class TimeParseTests(unittest.TestCase):

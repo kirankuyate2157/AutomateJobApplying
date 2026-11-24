@@ -189,12 +189,19 @@ SUCCESS_TEXTS = ("application sent", "your application was sent")
 
 # ---------------------------------------------------------------- post search
 POST_CONTAINERS = [
-    # current LinkedIn post-search feed containers (hash classes, seen on live DOM)
+    # broad: any div carrying an activity URN (covers current + legacy markup)
+    CSS("div[data-urn]"),
+    # semantic article wrapper
+    CSS("article"),
+    # most stable: LinkedIn activity URN attribute (doesn't rotate with CSS hashes)
+    CSS("div[data-urn*='urn:li:activity']"),
+    # generic update-component containers
+    CSS("div[class*='update-components']"),
+    # legacy class (may still match)
+    CSS("div.feed-shared-update-v2"),
+    # current LinkedIn post-search feed containers (hash classes rotate frequently)
     CSS("div.dr0hiu.dr0hr1.dr0kdh"),
     CSS("div.dr0ayq.dr0kdh"),
-    # [legacy-proven] fallbacks
-    CSS("div.feed-shared-update-v2"),
-    CSS("div[data-urn*='urn:li:activity']"),
     CSS("li.reusable-search__result-container"),
     CSS("div.update-components-text"),
 ]
@@ -205,6 +212,11 @@ POST_TIME = [CSS(".update-components-actor__sub-description span[aria-hidden='tr
 POST_SEE_MORE = [CSS("button.feed-shared-inline-show-more-text__see-more-less-toggle"),
                  XP(".//button[contains(normalize-space(.),'more') and contains(@class,'see-more')]"),
                  XP(".//button[normalize-space(.)='…more' or normalize-space(.)='...more']")]
+# LinkedIn content search uses a "Load more" button instead of infinite scroll.
+# Click it when a scroll round surfaces no new posts.
+LOAD_MORE_BUTTON = [
+    XP(".//*[contains(normalize-space(.),'Load more') and (self::button or self::a or @role='button')]"),
+]
 PostLinks = [CSS("a[href]")]
 
 # ---------------------------------------------------------------- single post page

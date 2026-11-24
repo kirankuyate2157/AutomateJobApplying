@@ -69,17 +69,49 @@ class LinkedInPostSource:
     def __init__(self, ctx: AppContext):
         self.ctx, self.driver = ctx, ctx.driver
 
+    def _scroll_feed(self, d: Any) -> None:
+        """Scroll LinkedIn's feed container down so lazy-loaded posts render.
+
+        Tries the feed scroll container first, then falls back to scrolling the
+        window by one viewport. LinkedIn search results paginate via "Load more"
+        rather than infinite scroll, so callers should also click that button.
+        """
+        container = None
+        try:
+            container = d.execute_script(
+                "return document.querySelector('div[class*=\"scaffold-finite-scroll__scroll-container\"]') "
+                "|| document.querySelector('div.feed-container') "
+                "|| document.querySelector('div[role=\"feed\"]') "
+                "|| document.scrollingElement;")
+        except WebDriverException:
+            container = None
+        if container is not None:
+            try:
+                d.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", container)
+            except WebDriverException:
+                pass
+            else:
+                return
+        # Fallback: scroll the window by one viewport (gentler than jump-to-bottom)
+        d.execute_script("window.scrollBy(0, window.innerHeight);")
+
     def iter_posts(self, keyword: str) -> Iterator[Post]:
-        """Yield posts for `keyword`, optionally deep-analysing each one's page."""
+        """Yield posts for `keyword`, optionally deep-analysing each one's page.
+
+        Scrolls LinkedIn's feed container until either `max_posts_per_keyword`
+        posts are collected or several consecutive scrolls surface no new posts.
+        """
         d, cfg = self.driver, self.ctx.settings.posts
         d.get(search_url(keyword, cfg.date_filter))
         pause(2.0, 3.5)
         guard(d)
         seen: set[str] = set()
         stale_rounds = 0
-        for _ in range(cfg.max_scrolls):
+        for scroll_no in range(1, cfg.max_scrolls + 1):
             new_in_round = 0
-            for container in find_all(d, S.POST_CONTAINERS):
+            containers = find_all(d, S.POST_CONTAINERS)
+            log.debug("scroll %d: found %d post containers", scroll_no, len(containers))
+            for container in containers:
                 try:
                     post = self._read_post(container, keyword)
                 except (StaleElementReferenceException, WebDriverException):
@@ -100,10 +132,46 @@ class LinkedInPostSource:
                 yield post
                 if len(seen) >= cfg.max_posts_per_keyword:
                     return
+            log.debug("scroll %d: %d new posts (total %d)", scroll_no, new_in_round, len(seen))
+            if new_in_round == 0:
+                # LinkedIn content search paginates via "Load more": try clicking it,
+                # then re-scan before counting this round as stale.
+                load_more = find_first(d, S.LOAD_MORE_BUTTON)
+                if load_more is not None:
+                    _click_seemore_safely(d, load_more)
+                    log.debug("clicked 'Load more' button for %r", keyword)
+                    pause(2.0, 3.0)
+                    containers2 = find_all(d, S.POST_CONTAINERS)
+                    new_in_round2 = 0
+                    for container in containers2:
+                        try:
+                            post = self._read_post(container, keyword)
+                        except (StaleElementReferenceException, WebDriverException):
+                            continue
+                        if not post or post.post_id in seen:
+                            continue
+                        seen.add(post.post_id)
+                        new_in_round2 += 1
+                        if cfg.analyze_each_page and post.url:
+                            try:
+                                deep = self.read_post_page(post.url)
+                                if deep.text:
+                                    post.text = deep.text
+                                post.hrefs = list(dict.fromkeys(post.hrefs + deep.hrefs))
+                            except Exception:
+                                log.debug("deep page read failed for %s", post.url)
+                        yield post
+                        if len(seen) >= cfg.max_posts_per_keyword:
+                            return
+                    log.debug("after load-more: %d new posts (total %d)", new_in_round2, len(seen))
+                    new_in_round = new_in_round2
+                else:
+                    log.debug("no 'Load more' button found for %r", keyword)
             stale_rounds = stale_rounds + 1 if new_in_round == 0 else 0
-            if stale_rounds >= 2:  # two empty scrolls in a row: end of results
+            if stale_rounds >= 4:
+                log.info("no new posts after %d scrolls; ending %r", scroll_no, keyword)
                 return
-            d.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            self._scroll_feed(d)
             pause(1.5, 2.8)  # let lazy-loaded posts render
 
     def _read_post(self, container: Any, keyword: str) -> Post | None:

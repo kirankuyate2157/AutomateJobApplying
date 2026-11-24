@@ -36,6 +36,8 @@ class ApplySettings:
     max_pages_per_query: int = 4      # result pages scanned per search
     unfollow_company: bool = True     # untick "follow company" on submit
     overwrite_prefilled: bool = False # keep values LinkedIn pre-filled (phone/email)
+    manual_control: bool = False      # wait for user to manually click Easy Apply on each job
+    manual_browse_only: bool = False  # skip searching entirely; just wait for you to click Easy Apply
 
 
 @dataclass
@@ -94,6 +96,8 @@ class PostSettings:
     max_scrolls: int = 12
     max_posts_per_keyword: int = 60
     min_hiring_score: int = 3
+    ai_extract: bool = False          # True = also refine company/requirements via LLM (needs llm provider + key)
+    analyze_each_page: bool = False   # True = open each post's own page for full text + comments (slower, more emails)
 
 
 @dataclass

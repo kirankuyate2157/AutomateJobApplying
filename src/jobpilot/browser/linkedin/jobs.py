@@ -57,13 +57,18 @@ class LinkedInJobSource:
     def _open_card(self, card, spec: SearchSpec) -> Job | None:
         d = self.driver
         link = find_first(card, S.CARD_LINK)
-        if link is None:
-            return None
-        href = link.get_attribute("href") or ""
+        href = link.get_attribute("href") if link is not None else ""
+        comp_key = card.get_attribute("componentkey") or ""
         job_id = (card.get_attribute("data-occludable-job-id")
                   or card.get_attribute("data-job-id") or "")
-        if not job_id:
+        if not job_id and comp_key:
+            match = re.search(r"(\d+)", comp_key)
+            job_id = match.group(1) if match else ""
+        if not job_id and href:
             match = re.search(r"/jobs/view/(\d+)", href)
+            job_id = match.group(1) if match else ""
+        if not job_id:
+            match = re.search(r"currentJobId=(\d+)", d.current_url)
             job_id = match.group(1) if match else ""
         if not job_id:
             return None
@@ -72,10 +77,17 @@ class LinkedInJobSource:
         if state is not None and text_of(state).lower() == "applied":
             return None                                       # LinkedIn already shows it as applied
 
-        title = text_of(link).split("\n")[0].strip()
+        if link is not None:
+            title = text_of(link).split("\n")[0].strip()
+        else:
+            card_lines = [l.strip() for l in text_of(card).split("\n") if l.strip()]
+            title = card_lines[0] if card_lines else "Software Engineer"
+            if title.startswith("Selected, "):
+                title = title.replace("Selected, ", "")
         company, location, style = self._subtitle(card)
-        easy_apply = find_first(card, S.EASY_APPLY_BUTTON) is not None
-        if not safe_click(d, link):
+        easy_apply_in_card = "easy apply" in text_of(card).lower() or (find_first(card, S.EASY_APPLY_BUTTON) is not None)
+        click_target = link if link is not None else card
+        if not safe_click(d, click_target):
             return None
         pause(0.8, 1.6)
 
@@ -94,6 +106,8 @@ class LinkedInJobSource:
             hr_link = (a.get_attribute("href") if a is not None else "") or ""
             hr_name = text_of(find_first(hirer, [S.XP(".//span")]) or hirer).split("\n")[0]
 
+        easy_apply = easy_apply_in_card or (find_first(d, S.EASY_APPLY_BUTTON, timeout=1.5) is not None)
+
         return Job(
             job_id=job_id, title=title, company=company, location=location, work_style=style,
             description=text_of(description) if description is not None else "",
@@ -106,10 +120,17 @@ class LinkedInJobSource:
         el = find_first(card, S.CARD_SUBTITLE)
         raw = text_of(el) if el is not None else ""
         company, _, rest = raw.partition(" · ")
-        if not rest:
-            meta = find_first(card, S.CARD_META)
-            if meta is not None:
-                rest = text_of(meta).split("·", 1)[0].strip()
+        if not company or not rest:
+            ps = [text_of(p) for p in card.find_elements("tag name", "p") if text_of(p)]
+            non_time = [p for p in ps if "ago" not in p.lower() and not p.lower().startswith("posted")]
+            if len(non_time) >= 3:
+                company = non_time[1]
+                rest = non_time[2]
+            elif len(non_time) == 2:
+                company = non_time[0]
+                rest = non_time[1]
+            elif len(non_time) == 1:
+                company = non_time[0]
         style = ""
         if rest.endswith(")") and "(" in rest:
             rest, _, style = rest[:-1].rpartition("(")

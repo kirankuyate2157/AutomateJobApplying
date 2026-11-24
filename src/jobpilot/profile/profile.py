@@ -28,6 +28,15 @@ class ResumeVariant:
 
 
 @dataclass
+class ProjectVariant:
+    name: str
+    role: str = ""
+    duration: str = ""
+    tech: str = ""
+    desc: str = ""
+
+
+@dataclass
 class Profile:
     # identity
     first_name: str
@@ -45,10 +54,12 @@ class Profile:
     linkedin_url: str = ""
     github_url: str = ""
     portfolio_url: str = ""
+    cover_letter_url: str = ""
     # work
     total_years: float = 0
     current_company: str = ""
     current_title: str = ""
+    current_start: str = ""
     notice_period_days: int = 30
     current_ctc: int = 0          # INR per annum
     expected_ctc: int = 0         # INR per annum
@@ -57,7 +68,9 @@ class Profile:
     cover_letter: str = ""
     self_rating: str = "8"        # answer for "rate yourself 1-10" style questions
     skills: dict[str, float] = field(default_factory=dict)   # canonical skill -> years
-    projects: list[str] = field(default_factory=list)
+    projects: list[ProjectVariant] = field(default_factory=list)
+    work_history: list[dict[str, str]] = field(default_factory=list)
+    education: list[dict[str, str]] = field(default_factory=list)
     # targeting
     target_roles: list[str] = field(default_factory=list)
     avoid_keywords: list[str] = field(default_factory=list)
@@ -88,6 +101,9 @@ class Profile:
     def llm_context(self) -> str:
         """Compact factual summary given to the LLM. It may only use facts from here."""
         skills = ", ".join(f"{k} ({v:g}y)" for k, v in sorted(self.skills.items(), key=lambda kv: -kv[1]))
+        proj_lines = []
+        for p in self.projects:
+            proj_lines.append(f"  • {p.name} ({p.role}, {p.duration}): {p.desc}. Tech: {p.tech}")
         return "\n".join([
             f"Name: {self.full_name}", f"Location: {self.city}, {self.state}, {self.country}",
             f"Total experience: {self.total_years:g} years",
@@ -98,7 +114,7 @@ class Profile:
             f"Needs visa sponsorship: {'yes' if self.requires_sponsorship else 'no'}; "
             f"authorised to work in: {', '.join(self.authorized_countries)}",
             f"Skills: {skills}", f"Summary: {self.summary.strip()}",
-            "Projects: " + "; ".join(self.projects)])
+            "Projects:\n" + "\n".join(proj_lines)])
 
     # ----------------------------------------------------------------- load
     @classmethod
@@ -116,6 +132,14 @@ class Profile:
     def from_dict(cls, raw: dict[str, Any]) -> "Profile":
         raw = dict(raw)
         resumes = [ResumeVariant(**r) for r in raw.pop("resumes", []) or []]
+        # Projects may be list of strings (legacy) or list of dicts (new)
+        raw_projects = raw.pop("projects", []) or []
+        projects = []
+        for p in raw_projects:
+            if isinstance(p, str):
+                projects.append(ProjectVariant(name=p))
+            else:
+                projects.append(ProjectVariant(**p))
         skills = {str(k).lower(): float(v) for k, v in (raw.pop("skills", {}) or {}).items()}
         known = set(cls.__dataclass_fields__)
         unknown = set(raw) - known
@@ -126,7 +150,7 @@ class Profile:
             raise ConfigError(f"Profile is missing required field(s): {missing}")
         raw["phone"] = str(raw["phone"])
         raw["zip_code"] = str(raw.get("zip_code", ""))
-        profile = cls(resumes=resumes, skills=skills, **raw)
+        profile = cls(resumes=resumes, skills=skills, projects=projects, **raw)
         if sum(1 for r in resumes if r.default) > 1:
             raise ConfigError("Only one resume may be marked default: true")
         return profile

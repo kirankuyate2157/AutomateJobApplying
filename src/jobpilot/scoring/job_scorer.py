@@ -79,9 +79,14 @@ class JobScorer:
         # WHY a country gate: sponsorship/authorization questions would be
         # answered "No" for jobs abroad, wasting a quota slot on a sure rejection.
         loc = job.location or ""
-        if loc and not _REMOTE.search(loc) and not any(
-                c.lower() in loc.lower() for c in self.p.authorized_countries):
-            return f"location outside authorised countries: {loc}"
+        if loc and not _REMOTE.search(loc):
+            auth = {c.lower() for c in self.p.authorized_countries}
+            if "india" in auth:
+                auth.update({"pune", "mumbai", "bengaluru", "bangalore", "hyderabad", "chennai",
+                             "delhi", "noida", "gurgaon", "gurugram", "kolkata", "ahmedabad",
+                             "kochi", "maharashtra", "karnataka", "telangana", "tamil nadu"})
+            if not any(c in loc.lower() for c in auth):
+                return f"location outside authorised countries: {loc}"
         return None
 
     def _title_points(self, title: str) -> float:

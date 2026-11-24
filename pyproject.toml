@@ -25,3 +25,38 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 jobpilot = ["resources/*"]
+
+# ------------------------------------------------------------------ ruff (lint + format)
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src"]
+exclude = [".venv", "build", "dist", "*.egg-info", "__pycache__", ".git"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "C4", "PLE", "PERF", "RET", "RUF", "TRY"]
+ignore = ["E501", "B008"]
+unfixable = ["F401", "F811"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["jobpilot"]
+force-single-line = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ------------------------------------------------------------------ mypy (static types)
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+check_untyped_defs = true
+strict_optional = true
+ignore_missing_imports = true
+exclude = [
+    ".venv", "build", "dist", "*.egg-info", "__pycache__", ".git",
+    "src/jobpilot/browser/__pycache__",
+]

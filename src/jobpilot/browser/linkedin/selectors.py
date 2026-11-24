@@ -188,8 +188,16 @@ DAILY_LIMIT_TEXT = "exceeded the daily application limit"
 SUCCESS_TEXTS = ("application sent", "your application was sent")
 
 # ---------------------------------------------------------------- post search
-POST_CONTAINERS = [CSS("div.feed-shared-update-v2"), CSS("div[data-urn*='urn:li:activity']"),
-                   CSS("li.reusable-search__result-container"), CSS("div.update-components-text")]
+POST_CONTAINERS = [
+    # current LinkedIn post-search feed containers (hash classes, seen on live DOM)
+    CSS("div.dr0hiu.dr0hr1.dr0kdh"),
+    CSS("div.dr0ayq.dr0kdh"),
+    # [legacy-proven] fallbacks
+    CSS("div.feed-shared-update-v2"),
+    CSS("div[data-urn*='urn:li:activity']"),
+    CSS("li.reusable-search__result-container"),
+    CSS("div.update-components-text"),
+]
 POST_TEXT = [CSS(".update-components-text"), CSS(".feed-shared-inline-show-more-text"), CSS("span.break-words")]
 POST_AUTHOR = [CSS(".update-components-actor__title span[aria-hidden='true']"), CSS(".update-components-actor__name")]
 POST_TIME = [CSS(".update-components-actor__sub-description span[aria-hidden='true']"),

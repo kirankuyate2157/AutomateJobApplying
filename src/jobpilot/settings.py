@@ -97,6 +97,39 @@ class PostSettings:
 
 
 @dataclass
+class OutreachSettings:
+    """LinkedIn network outreach: DMs, connection requests, follow-ups, referrals.
+
+    All extraction tracks experiments with unique (kind, value) dedup so the
+    same person is never messaged twice. Spacing delays prevent spam flags.
+    """
+    enabled: bool = True
+    # Daily caps per outreach type
+    daily_cap_connection: int = 20
+    daily_cap_dm: int = 15
+    daily_cap_followup: int = 15
+    daily_cap_referral: int = 10
+    # Spacing delays (seconds) between messages to same person/domain
+    delay_min_s: float = 30.0
+    delay_max_s: float = 90.0
+    delay_per_domain_min_s: float = 60.0
+    delay_per_domain_max_s: float = 180.0
+    # Follow-up schedule (days after previous message)
+    followup_1_days: int = 3
+    followup_2_days: int = 7
+    followup_3_days: int = 14
+    # Experiment tracking
+    ab_test_enabled: bool = True
+    ab_test_variants: int = 3
+    max_messages_per_person: int = 5
+    # Templates
+    templates_dir: str = "config/templates/outreach"
+    default_template: str = "connection_request"
+    # Dry run: prepare drafts but don't send
+    dry_run: bool = True
+
+
+@dataclass
 class BrowserSettings:
     headless: bool = False
     user_data_dir: str = "data/chrome-profile"   # persistent login, separate from your daily Chrome
@@ -127,6 +160,7 @@ class Settings:
     answers: AnswerSettings = field(default_factory=AnswerSettings)
     mail: MailSettings = field(default_factory=MailSettings)
     posts: PostSettings = field(default_factory=PostSettings)
+    outreach: OutreachSettings = field(default_factory=OutreachSettings)
     browser: BrowserSettings = field(default_factory=BrowserSettings)
     paths: PathsSettings = field(default_factory=PathsSettings)
     root: Path = field(default_factory=Path.cwd)   # project root; not settable from YAML

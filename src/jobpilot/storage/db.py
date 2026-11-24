@@ -59,11 +59,55 @@ MIGRATIONS: list[str] = [
         failed INTEGER DEFAULT 0, review INTEGER DEFAULT 0, notes TEXT);
     """,
     # ---- v2+ : add new migrations below, never edit the ones above ------- #
+    # ---- v2 : outreach automation tables ---------------------------------- #
+    """
+    CREATE TABLE outreach_contacts(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,                      -- connection | dm | followup | referral
+        value TEXT NOT NULL,                     -- email | linkedin profile url | phone
+        name TEXT,
+        company TEXT,
+        role TEXT,
+        source_type TEXT,                        -- post | feed | jobs | manual
+        source_id TEXT,                          -- post_id or job_id
+        experiment_id TEXT,                      -- A/B test group
+        variant INTEGER,                         -- 1, 2, 3...
+        status TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | responded | failed | skipped
+        first_seen TEXT,
+        last_contacted TEXT,
+        times_contacted INTEGER DEFAULT 0,
+        next_contact_due TEXT,                   -- next follow-up due date
+        UNIQUE(kind, value));
+    CREATE INDEX idx_outreach_contacts_status ON outreach_contacts(status);
+    CREATE INDEX idx_outreach_contacts_due ON outreach_contacts(next_contact_due);
+
+    CREATE TABLE outreach_messages(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        contact_id INTEGER NOT NULL,
+        kind TEXT NOT NULL,                      -- connection | dm | followup | referral
+        variant INTEGER,
+        subject TEXT,
+        body_text TEXT,
+        body_html TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | delivered | failed
+        sent_at TEXT,
+        error TEXT,
+        FOREIGN KEY(contact_id) REFERENCES outreach_contacts(id));
+
+    CREATE TABLE outreach_campaigns(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL,                      -- connection | dm | followup | referral
+        daily_cap INTEGER DEFAULT 20,
+        sent_today INTEGER DEFAULT 0,
+        last_run TEXT,
+        status TEXT NOT NULL DEFAULT 'active');
+    """
 ]
 
 # jobs in these states are never reconsidered (dry_run_ok is handled specially)
 FINAL_STATUSES = ("applied", "skipped", "external", "failed")
-EXPORTABLE_TABLES = ("jobs", "questions", "posts", "contacts", "mail_queue", "search_stats", "runs")
+EXPORTABLE_TABLES = ("jobs", "questions", "posts", "contacts", "mail_queue", "search_stats", "runs", "outreach_contacts", "outreach_messages", "outreach_campaigns")
 
 
 def _now() -> str:

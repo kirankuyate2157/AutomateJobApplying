@@ -189,6 +189,12 @@ SUCCESS_TEXTS = ("application sent", "your application was sent")
 
 # ---------------------------------------------------------------- post search
 POST_CONTAINERS = [
+    # current LinkedIn post-search containers: div.dr0ayq.dr0kdh matches most posts
+    CSS("div.dr0ayq.dr0kdh"),
+    # variant with dr0hr1
+    CSS("div.dr0hiu.dr0hr1.dr0kdh"),
+    # section variant
+    CSS("section.dr0hiu.dr0kdh"),
     # broad: any div carrying an activity URN (covers current + legacy markup)
     CSS("div[data-urn]"),
     # semantic article wrapper
@@ -199,9 +205,6 @@ POST_CONTAINERS = [
     CSS("div[class*='update-components']"),
     # legacy class (may still match)
     CSS("div.feed-shared-update-v2"),
-    # current LinkedIn post-search feed containers (hash classes rotate frequently)
-    CSS("div.dr0hiu.dr0hr1.dr0kdh"),
-    CSS("div.dr0ayq.dr0kdh"),
     CSS("li.reusable-search__result-container"),
     CSS("div.update-components-text"),
 ]

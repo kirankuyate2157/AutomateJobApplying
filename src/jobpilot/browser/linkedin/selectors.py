@@ -222,7 +222,29 @@ LOAD_MORE_BUTTON = [
 ]
 PostLinks = [CSS("a[href]")]
 
-# ---------------------------------------------------------------- single post page
+# ---------------------------------------------------------------- feed page
+# LinkedIn main feed (https://www.linkedin.com/feed/) uses infinite scroll.
+# Feed post containers share markup with search results but may have
+# additional wrapper classes on the feed page.
+FEED_CONTAINERS = [
+    # feed post article wrappers
+    CSS("div.feed-shared-update-v2"),
+    CSS("div.dr0ayq.dr0kdh"),
+    CSS("div.dr0hiu.dr0hr1.dr0kdh"),
+    CSS("section.dr0hiu.dr0kdh"),
+    # broad fallbacks
+    CSS("div[data-urn*='urn:li:activity']"),
+    CSS("article"),
+    CSS("div[data-urn]"),
+]
+FEED_TEXT = [CSS(".update-components-text"), CSS(".feed-shared-inline-show-more-text"), CSS("span.break-words")]
+FEED_AUTHOR = [CSS(".update-components-actor__title span[aria-hidden='true']"), CSS(".update-components-actor__name")]
+FEED_TIME = [CSS(".update-components-actor__sub-description span[aria-hidden='true']"),
+             CSS(".update-components-actor__sub-description")]
+FEED_SEE_MORE = [CSS("button.feed-shared-inline-show-more-text__see-more-less-toggle"),
+                 XP(".//button[contains(normalize-space(.),'more') and contains(@class,'see-more')]"),
+                 XP(".//button[normalize-space(.)='…more' or normalize-space(.)='...more']")]
+FeedLinks = [CSS("a[href]")]
 # When we open a post's own URL (feed/update/...), LinkedIn renders the full
 # post plus comments. Comments often carry the real "send CV to..." email that
 # the post body truncates, so deep per-page analysis is worth one extra load.

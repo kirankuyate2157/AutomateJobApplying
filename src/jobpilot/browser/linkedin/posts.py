@@ -5,6 +5,17 @@ scraper scrolls the (date-sorted) post-search results, expands every "...more",
 and returns raw Post objects (text + every href inside the post, including
 mailto: links that the visible text may truncate).
 
+Algorithm (one post at a time, content-verified):
+  1. Open LinkedIn content-search URL for a keyword
+  2. Scroll down, wait for new posts to render
+  3. For EACH post container (one by one):
+       a. Click "...see more" to expand truncated text
+       b. Read full text + every href
+       c. Check hiring intent before yielding — non-hiring posts are skipped
+       d. Only YIELD posts that pass the hiring threshold
+       e. Optional deep pass: open the post's own page for full text + comments
+  4. Repeat per keyword until max_posts_per_keyword collected or no new posts
+
 Two pass modes:
   * search pass (default) - read each post card inline while scrolling the
     search results. Fast, one page load per keyword.
@@ -14,6 +25,9 @@ Two pass modes:
 
 Analysis (is it a hiring post? which emails/phones/forms?) is NOT done here;
 see extraction/contacts.py. Scraping and understanding stay separate.
+
+DATA INTEGRITY: SQLite uses INSERT OR IGNORE on post_id — existing posts are
+never overwritten or deleted. Re-running only adds new posts.
 """
 
 from __future__ import annotations
@@ -21,6 +35,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import time
 from typing import Any
 from typing import Iterator
 from urllib.parse import quote
@@ -42,6 +57,13 @@ from .session import guard
 
 log = logging.getLogger(__name__)
 
+# Minimum text length for a post to be worth reading at all
+_MIN_TEXT_LEN = 30
+
+# How long to wait (seconds) for new posts to appear after a scroll
+_SCROLL_WAIT_S = 6.0
+_SCROLL_POLL_S = 0.5
+
 
 def search_url(keyword: str, date_filter: str) -> str:
     # LinkedIn expects the filter values wrapped in double quotes
@@ -53,11 +75,7 @@ def search_url(keyword: str, date_filter: str) -> str:
 
 
 def _click_seemore_safely(driver: Any, element: Any) -> None:
-    """Click a "...more" toggle, swallowing transient Selenium errors.
-
-    Keeping the try/except out of the caller's loop avoids PERF203 while still
-    being defensive about stale elements.
-    """
+    """Click a "...more" toggle, swallowing transient Selenium errors."""
     try:
         js_click(driver, element)
         pause(0.2, 0.5)
@@ -65,17 +83,40 @@ def _click_seemore_safely(driver: Any, element: Any) -> None:
         pass
 
 
+def _count_containers(d: Any) -> int:
+    """Return how many post containers are currently in the DOM."""
+    try:
+        return len(d.find_elements(*S.POST_CONTAINERS[0]))
+    except WebDriverException:
+        return 0
+
+
+def _wait_for_new_posts(d: Any, before_count: int) -> int:
+    """After scrolling, wait until new post containers appear.
+
+    Returns the new container count. Polls for up to _SCROLL_WAIT_S.
+    """
+    deadline = time.monotonic() + _SCROLL_WAIT_S
+    while time.monotonic() < deadline:
+        try:
+            count = len(d.find_elements(*S.POST_CONTAINERS[0]))
+        except WebDriverException:
+            count = before_count
+        if count > before_count:
+            return count
+        time.sleep(_SCROLL_POLL_S)
+    try:
+        return len(d.find_elements(*S.POST_CONTAINERS[0]))
+    except WebDriverException:
+        return before_count
+
+
 class LinkedInPostSource:
     def __init__(self, ctx: AppContext):
         self.ctx, self.driver = ctx, ctx.driver
 
     def _scroll_feed(self, d: Any) -> None:
-        """Scroll LinkedIn's feed container down so lazy-loaded posts render.
-
-        Tries the feed scroll container first, then falls back to scrolling the
-        window by one viewport. LinkedIn search results paginate via "Load more"
-        rather than infinite scroll, so callers should also click that button.
-        """
+        """Scroll LinkedIn's feed container down so lazy-loaded posts render."""
         container = None
         try:
             container = d.execute_script(
@@ -92,14 +133,35 @@ class LinkedInPostSource:
                 pass
             else:
                 return
-        # Fallback: scroll the window by one viewport (gentler than jump-to-bottom)
+        # Fallback: scroll the window by one viewport
         d.execute_script("window.scrollBy(0, window.innerHeight);")
 
-    def iter_posts(self, keyword: str) -> Iterator[Post]:
-        """Yield posts for `keyword`, optionally deep-analysing each one's page.
+    def _is_hiring_signal(self, text: str) -> bool:
+        """Quick check: does this post look like a hiring post?
 
-        Scrolls LinkedIn's feed container until either `max_posts_per_keyword`
-        posts are collected or several consecutive scrolls surface no new posts.
+        Used to skip non-hiring noise before doing full extraction.
+        """
+        if not text:
+            return False
+        t = text.lower()
+        signals = [
+            "hiring", "we're hiring", "we are hiring",
+            "send your resume", "send your cv", "share your resume",
+            "apply now", "apply here", "job opening", "openings",
+            "vacancy", "walk-in", "walk in", "immediate joiner",
+            "join our team", "join my team", "dm me", "dm us",
+            "mailto:", "forms.gle", "tally.so",
+            "looking for developer", "looking for engineer",
+            "looking for python", "looking for java",
+        ]
+        return any(sig in t for sig in signals)
+
+    def iter_posts(self, keyword: str) -> Iterator[Post]:
+        """Yield hiring posts for `keyword`, one by one.
+
+        Each post is individually content-verified: non-hiring posts are
+        skipped immediately. Only posts passing the hiring signal check are
+        yielded (and optionally deep-analysed).
         """
         d, cfg = self.driver, self.ctx.settings.posts
         d.get(search_url(keyword, cfg.date_filter))
@@ -107,19 +169,47 @@ class LinkedInPostSource:
         guard(d)
         seen: set[str] = set()
         stale_rounds = 0
+        total_yielded = 0
+        total_skipped = 0
+
         for scroll_no in range(1, cfg.max_scrolls + 1):
-            new_in_round = 0
+            before_count = _count_containers(d)
             containers = find_all(d, S.POST_CONTAINERS)
-            log.debug("scroll %d: found %d post containers", scroll_no, len(containers))
-            for container in containers:
+            new_in_round = 0
+            yielded_in_round = 0
+            skipped_in_round = 0
+
+            log.info(
+                "posts scroll %d for %r: %d containers in DOM",
+                scroll_no, keyword, len(containers),
+            )
+
+            for idx, container in enumerate(containers, start=1):
                 try:
                     post = self._read_post(container, keyword)
                 except (StaleElementReferenceException, WebDriverException):
                     continue
-                if not post or post.post_id in seen:
+                if not post:
                     continue
+                if post.post_id in seen:
+                    continue
+
+                # One-by-one content check: skip non-hiring posts early
+                if not self._is_hiring_signal(post.text):
+                    seen.add(post.post_id)
+                    skipped_in_round += 1
+                    total_skipped += 1
+                    log.debug(
+                        "posts scroll %d for %r post %d: SKIPPED (not hiring): %s",
+                        scroll_no, keyword, idx, post.text[:80].replace("\n", " | "),
+                    )
+                    continue
+
                 seen.add(post.post_id)
                 new_in_round += 1
+                yielded_in_round += 1
+                total_yielded += 1
+
                 # Deep pass: open the post's own page for full text + comments.
                 if cfg.analyze_each_page and post.url:
                     try:
@@ -129,50 +219,44 @@ class LinkedInPostSource:
                         post.hrefs = list(dict.fromkeys(post.hrefs + deep.hrefs))
                     except Exception:  # one bad page must not kill the run
                         log.debug("deep page read failed for %s", post.url)
+
+                log.info(
+                    "posts scroll %d for %r post %d: YIELDED (hiring) author=%s text=%s",
+                    scroll_no, keyword, idx, post.author,
+                    post.text[:120].replace("\n", " | "),
+                )
                 yield post
+
                 if len(seen) >= cfg.max_posts_per_keyword:
                     return
-            log.debug("scroll %d: %d new posts (total %d)", scroll_no, new_in_round, len(seen))
-            if new_in_round == 0:
-                # LinkedIn content search paginates via "Load more": try clicking it,
-                # then re-scan before counting this round as stale.
-                load_more = find_first(d, S.LOAD_MORE_BUTTON)
-                if load_more is not None:
-                    _click_seemore_safely(d, load_more)
-                    log.debug("clicked 'Load more' button for %r", keyword)
-                    pause(2.0, 3.0)
-                    containers2 = find_all(d, S.POST_CONTAINERS)
-                    new_in_round2 = 0
-                    for container in containers2:
-                        try:
-                            post = self._read_post(container, keyword)
-                        except (StaleElementReferenceException, WebDriverException):
-                            continue
-                        if not post or post.post_id in seen:
-                            continue
-                        seen.add(post.post_id)
-                        new_in_round2 += 1
-                        if cfg.analyze_each_page and post.url:
-                            try:
-                                deep = self.read_post_page(post.url)
-                                if deep.text:
-                                    post.text = deep.text
-                                post.hrefs = list(dict.fromkeys(post.hrefs + deep.hrefs))
-                            except Exception:
-                                log.debug("deep page read failed for %s", post.url)
-                        yield post
-                        if len(seen) >= cfg.max_posts_per_keyword:
-                            return
-                    log.debug("after load-more: %d new posts (total %d)", new_in_round2, len(seen))
-                    new_in_round = new_in_round2
-                else:
-                    log.debug("no 'Load more' button found for %r", keyword)
+
+            log.info(
+                "posts scroll %d for %r: yielded=%d skipped=%d new=%d total_seen=%d total_yielded=%d total_skipped=%d",
+                scroll_no, keyword, yielded_in_round, skipped_in_round, new_in_round,
+                len(seen), total_yielded, total_skipped,
+            )
+
+            # Wait for new posts to load after this scroll round
+            after_count = _wait_for_new_posts(d, before_count)
+            new_loaded = after_count - before_count
+            log.debug(
+                "posts scroll %d for %r: DOM went %d -> %d containers (%d new)",
+                scroll_no, keyword, before_count, after_count, new_loaded,
+            )
+
             stale_rounds = stale_rounds + 1 if new_in_round == 0 else 0
             if stale_rounds >= 4:
-                log.info("no new posts after %d scrolls; ending %r", scroll_no, keyword)
+                log.info(
+                    "no new hiring posts after %d scrolls; ending %r", scroll_no, keyword
+                )
                 return
             self._scroll_feed(d)
             pause(1.5, 2.8)  # let lazy-loaded posts render
+
+        log.info(
+            "posts complete for %r: total_seen=%d total_yielded=%d total_skipped=%d",
+            keyword, len(seen), total_yielded, total_skipped,
+        )
 
     def _read_post(self, container: Any, keyword: str) -> Post | None:
         d = self.driver
@@ -181,13 +265,13 @@ class LinkedInPostSource:
             _click_seemore_safely(d, more)
         text_el = find_first(container, S.POST_TEXT)
         text = text_of(text_el) if text_el is not None else text_of(container)
-        if len(text) < 30:
+        if len(text) < _MIN_TEXT_LEN:
             return None
         hrefs = [a.get_attribute("href") or "" for a in container.find_elements(*S.PostLinks[0])]
         hrefs = [h for h in hrefs if h.startswith(("mailto:", "http"))]
         urn = container.get_attribute("data-urn") or ""
         url = f"https://www.linkedin.com/feed/update/{urn}" if urn.startswith("urn:li:") else ""
-        # stable id: the activity URN if present, else a hash of the text (survives re-scrapes)
+        # stable id: the activity URN if present, else a hash of the text
         post_id = (
             re.sub(r"\W+", "_", urn) if urn else hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
         )

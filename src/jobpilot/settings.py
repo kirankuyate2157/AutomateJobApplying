@@ -101,6 +101,16 @@ class PostSettings:
 
 
 @dataclass
+class FeedSettings:
+    enabled: bool = True
+    max_scrolls: int = 12
+    max_posts: int = 60
+    min_hiring_score: int = 3
+    ai_extract: bool = False          # True = also refine company/requirements via LLM (needs llm provider + key)
+    analyze_each_page: bool = False   # True = open each post's own page for full text + comments (slower, more emails)
+
+
+@dataclass
 class BrowserSettings:
     headless: bool = False
     user_data_dir: str = "data/chrome-profile"   # persistent login, separate from your daily Chrome
@@ -118,7 +128,7 @@ class PathsSettings:
 @dataclass
 class PipelineSettings:
     # Order matters: posts first (they create mail drafts), then jobs, then mail sending.
-    stages: list[str] = field(default_factory=lambda: ["posts", "jobs", "outreach"])
+    stages: list[str] = field(default_factory=lambda: ["posts", "feed", "jobs", "outreach"])
 
 
 @dataclass
@@ -131,6 +141,7 @@ class Settings:
     answers: AnswerSettings = field(default_factory=AnswerSettings)
     mail: MailSettings = field(default_factory=MailSettings)
     posts: PostSettings = field(default_factory=PostSettings)
+    feed: FeedSettings = field(default_factory=FeedSettings)
     browser: BrowserSettings = field(default_factory=BrowserSettings)
     paths: PathsSettings = field(default_factory=PathsSettings)
     root: Path = field(default_factory=Path.cwd)   # project root; not settable from YAML

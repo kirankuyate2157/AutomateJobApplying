@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 BUILTIN_MODULES = (
     "jobpilot.features.jobs",
     "jobpilot.features.posts",
+    "jobpilot.features.feed",
     "jobpilot.features.outreach",
     "jobpilot.features.answers",
     "jobpilot.features.reports",

@@ -21,7 +21,8 @@ from typing import Any
 
 from ...core.command import Command
 from ...core.context import AppContext
-from ...core.registry import commands, stages
+from ...core.registry import commands
+from ...core.registry import stages
 from ...core.stage import StageResult
 from .network import NetworkAutomation
 

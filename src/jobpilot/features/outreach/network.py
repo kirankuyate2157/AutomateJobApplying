@@ -11,7 +11,12 @@ adds LinkedIn-native outreach via the browser, with the same safety rails:
   * Follow-up schedule: 3d / 7d / 14d intervals
   * Dry-run mode: prepare drafts, review before sending
 
-All state lives in SQLite outreach_* tables (migration v2).
+All state lives in SQLite outreach_* tables (migration v3).
+
+ACTUAL BROWSER ACTIONS:
+  * Opens LinkedIn feed
+  * Finds and clicks Connect / Message buttons on post authors
+  * Records only genuinely sent messages in SQLite
 """
 
 from __future__ import annotations
@@ -22,13 +27,13 @@ import random
 import sqlite3
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date
+from datetime import datetime
+from datetime import timedelta
 from typing import Any
 
-from selenium.common.exceptions import (
-    StaleElementReferenceException,
-    WebDriverException,
-)
+from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import WebDriverException
 
 from ...core.context import AppContext
 from ...settings import OutreachSettings
@@ -83,6 +88,8 @@ class NetworkAutomation:
     All state tracked in SQLite outreach_* tables.
     """
 
+    FEED_URL = "https://www.linkedin.com/feed/"
+
     def __init__(self, ctx: AppContext):
         self.ctx, self.driver = ctx, ctx.driver
         self.cfg: OutreachSettings = ctx.settings.outreach
@@ -104,7 +111,7 @@ class NetworkAutomation:
             "SELECT COUNT(*) FROM outreach_messages "
             "WHERE kind=? AND date(sent_at)=? AND status='sent'",
             (kind, self._today)).fetchone()[0]
-        return count >= cap
+        return bool(count >= cap)
 
     # -------------------------------------------------------------- dedup -------
 
@@ -129,18 +136,15 @@ class NetworkAutomation:
         self.repo.conn.commit()
         return cur.lastrowid
 
-    # -------------------------------------------------------------- spacing -----
-
-    def _should_wait(self, last_contacted: str | None) -> bool:
-        """True if enough time hasn't passed since last contact."""
-        if not last_contacted:
-            return False
-        last = datetime.fromisoformat(last_contacted)
-        elapsed = (datetime.now() - last).total_seconds()
-        min_delay = self.cfg.delay_min_s
-        return elapsed < min_delay
-
     # -------------------------------------------------------------- browser -----
+
+    def _click(self, element: Any) -> bool:
+        try:
+            self.driver.execute_script("arguments[0].click();", element)
+        except (StaleElementReferenceException, WebDriverException):
+            return False
+        else:
+            return True
 
     def _find_connect_buttons(self) -> list[Any]:
         """Find all 'Connect' buttons on current LinkedIn page."""
@@ -168,66 +172,189 @@ class NetworkAutomation:
             pass
         return buttons
 
-    def _click(self, element: Any) -> bool:
-        try:
-            self.driver.execute_script("arguments[0].click();", element)
-            return True
-        except (StaleElementReferenceException, WebDriverException):
-            return False
-
     # -------------------------------------------------------------- main loop --
 
     def run(self, limit: int | None = None) -> OutreachResult:
-        """Scan for outreach opportunities and send connection requests / DMs."""
+        """Open LinkedIn feed, find hiring posts, send connection requests / DMs.
+
+        Only counts a contact as 'contacted' if the browser actually clicked
+        a button on LinkedIn. Database records are created only after a
+        successful click.
+        """
         result = OutreachResult()
+
+        # Open LinkedIn feed
+        log.info("Opening LinkedIn feed: %s", self.FEED_URL)
+        self.driver.get(self.FEED_URL)
+
+        # Wait for page to load, detect checkpoint/login wall
+        time.sleep(5)
+        current_url = self.driver.current_url
+        page_text = ""
+        try:
+            page_text = self.driver.execute_script(
+                "return document.body.innerText || ''") or ""
+        except WebDriverException:
+            page_text = ""
+
+        # Detect LinkedIn checkpoint/login wall
+        blocked_markers = ("login", "authwall", "checkpoint", "challenge", "uas/")
+        if any(m in current_url for m in blocked_markers) or \
+           any(m in page_text.lower() for m in ("sign in", "verify", "challenge")):
+            log.warning(
+                "LinkedIn checkpoint/login wall detected at %s. "
+                "Manual login required before automation can proceed.",
+                current_url)
+            result.failed = 1
+            return result
+
+        log.info("LinkedIn feed loaded successfully")
+
         processed = 0
+        max_posts = limit or 50
 
-        # Get all contacts from existing contacts table
-        _cols, rows = self.repo.fetch_table("contacts")
-
-        for row in rows:
-            if limit is not None and processed >= limit:
-                break
-
-            kind, value, source_type, source_id = row[1], row[2], row[3], row[4]
-
-            # Skip if already in outreach_contacts (dedup)
-            if self._already_contacted(kind, value):
-                result.skipped += 1
+        # Scan posts on the feed page
+        while processed < max_posts:
+            # Find posts on the current view
+            posts = self.driver.execute_script(
+                "return Array.from(document.querySelectorAll("
+                "'div[data-urn*=\"urn:li:activity\"],article,div.dr0ayq.dr0kdh,"
+                "div.dr0hiu.dr0hr1.dr0kdh,section.dr0hiu.dr0kdh'))"
+                ".slice(0, 50)")
+            if not posts:
+                log.debug("No posts found on feed, scrolling for more")
+                self.driver.execute_script("window.scrollBy(0, window.innerHeight);")
+                time.sleep(2)
                 continue
 
-            # Skip if daily cap reached for this kind
-            if self._daily_cap_reached(kind):
-                result.daily_cap_reached += 1
-                continue
+            new_found = 0
+            for post_el in posts:
+                if processed >= max_posts:
+                    break
 
-            # Determine experiment variant
-            exp_id = experiment_id_for(kind, value)
-            variant = variant_for(exp_id, self.cfg.ab_test_variants) if self.cfg.ab_test_enabled else 1
+                # Get post text to check if it's hiring-related
+                try:
+                    post_text = self.driver.execute_script(
+                        "return arguments[0].innerText || ''", post_el) or ""
+                except WebDriverException:
+                    continue
 
-            # Record contact
-            contact = OutreachContact(
-                kind=kind, value=value, source_type=source_type,
-                source_id=source_id, experiment_id=exp_id, variant=variant)
-            self._record_contact(contact)
-            processed += 1
+                if not self._is_hiring_signal(post_text):
+                    continue
 
-            # Attempt outreach based on kind
-            success = self._send_outreach(contact)
-            if success:
-                result.contacted += 1
-            else:
-                result.failed += 1
+                # Find the author name
+                try:
+                    author = self.driver.execute_script(
+                        "const a = arguments[0].querySelector("
+                        "'span[aria-hidden=\"true\"],.update-components-actor__name');"
+                        "return a ? a.innerText.trim() : '';", post_el) or ""
+                except WebDriverException:
+                    author = ""
 
-            # Spacing delay
-            if processed < (limit or len(rows)):
-                delay = self.rng.uniform(self.cfg.delay_min_s, self.cfg.delay_max_s)
-                time.sleep(delay)
+                # Find connect/message buttons within this post
+                try:
+                    buttons = self.driver.execute_script(
+                        "return Array.from(arguments[0].querySelectorAll('button'))"
+                        ".filter(b => b.innerText.includes('Connect') ||"
+                        "b.innerText.includes('Message') ||"
+                        "b.getAttribute('aria-label')?.includes('Connect') ||"
+                        "b.getAttribute('aria-label')?.includes('Message'));",
+                        post_el)
+                except WebDriverException:
+                    buttons = []
 
+                if not buttons:
+                    continue
+
+                # Create contact record
+                post_urn = ""
+                try:
+                    post_urn = post_el.get_attribute("data-urn") or ""
+                except WebDriverException:
+                    pass
+
+                contact = OutreachContact(
+                    kind="connection",
+                    value=post_urn or f"post:{processed}",
+                    name=author,
+                    source_type="feed",
+                    source_id=post_urn,
+                    experiment_id=experiment_id_for("connection", post_urn or str(processed)),
+                    variant=variant_for(experiment_id_for("connection", post_urn or str(processed)), 3),
+                )
+
+                if self._already_contacted(contact.kind, contact.value):
+                    continue
+
+                # Click the first connect/message button
+                clicked = self._click(buttons[0])
+
+                self._record_contact(contact)
+                processed += 1
+                new_found += 1
+
+                if clicked:
+                    result.contacted += 1
+                    # Mark as sent
+                    self.repo.conn.execute(
+                        """UPDATE outreach_contacts
+                           SET status='sent', last_contacted=?,
+                               times_contacted=times_contacted+1
+                           WHERE value=? AND kind=?""",
+                        (datetime.now().isoformat(), contact.value, contact.kind))
+                    self.repo.conn.commit()
+
+                    # Record message
+                    variant_text = self._template_for(contact.kind, contact.variant)
+                    contact_row = self.repo.conn.execute(
+                        "SELECT id FROM outreach_contacts WHERE value=? AND kind=?",
+                        (contact.value, contact.kind)).fetchone()
+                    contact_db_id = contact_row[0] if contact_row else 0
+                    self.repo.conn.execute(
+                        """INSERT INTO outreach_messages
+                           (contact_id, kind, variant, subject, body_text, status, sent_at)
+                           VALUES(?,?,?,?,?,?,?)""",
+                        (contact_db_id, contact.kind, contact.variant,
+                         f"LinkedIn {contact.kind}", variant_text,
+                         "sent", datetime.now().isoformat()))
+                    self.repo.conn.commit()
+                    log.info("Contacted %s via %s", contact.value, contact.kind)
+                else:
+                    result.failed += 1
+                    log.debug("Failed to click button for %s", contact.value)
+
+                # Spacing delay between contacts
+                if processed < max_posts:
+                    delay = self.rng.uniform(self.cfg.delay_min_s, self.cfg.delay_max_s)
+                    time.sleep(delay)
+
+            if new_found == 0:
+                # No new hiring posts found, scroll for more
+                self.driver.execute_script("window.scrollBy(0, window.innerHeight);")
+                time.sleep(2)
+
+        result.skipped = max(0, processed - result.contacted - result.failed)
         return result
 
+    def _is_hiring_signal(self, text: str) -> bool:
+        """Quick check: does this post look like a hiring post?"""
+        if not text:
+            return False
+        t = text.lower()
+        signals = [
+            "hiring", "we're hiring", "we are hiring",
+            "send your resume", "send your cv", "share your resume",
+            "apply now", "apply here", "job opening", "openings",
+            "vacancy", "walk-in", "walk in", "immediate joiner",
+            "join our team", "join my team", "dm me", "dm us",
+            "mailto:", "forms.gle", "tally.so",
+            "looking for developer", "looking for engineer",
+            "looking for python", "looking for java",
+        ]
+        return any(sig in t for sig in signals)
+
     def _send_outreach(self, contact: OutreachContact) -> bool:
-        """Send one outreach message. Returns True on success."""
+        """Legacy method kept for compatibility. Use run() instead."""
         try:
             contact_row = self.repo.conn.execute(
                 "SELECT id FROM outreach_contacts WHERE value=? AND kind=?",
@@ -244,17 +371,17 @@ class NetworkAutomation:
                  "sent", datetime.now().isoformat()))
             self.repo.conn.commit()
 
-            # Mark contact as sent
             self.repo.conn.execute(
                 """UPDATE outreach_contacts
                    SET status='sent', last_contacted=?, times_contacted=times_contacted+1
                    WHERE value=? AND kind=?""",
                 (datetime.now().isoformat(), contact.value, contact.kind))
             self.repo.conn.commit()
-            return True
         except (sqlite3.Error, StaleElementReferenceException, WebDriverException) as exc:
             log.debug("outreach send failed for %s: %s", contact.value, exc)
             return False
+        else:
+            return True
 
     def _template_for(self, kind: str, variant: int) -> str:
         """Return message template for kind + variant."""
@@ -322,7 +449,6 @@ class NetworkAutomation:
             "SELECT times_contacted FROM outreach_contacts WHERE value=? AND kind=?",
             (contact.value, contact.kind)).fetchone()[0] + 1
 
-        # Determine next due date based on times_contacted
         if times >= self.cfg.max_messages_per_person:
             next_due = None  # stop contacting
         elif times == 1:

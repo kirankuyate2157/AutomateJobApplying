@@ -14,8 +14,9 @@ adds LinkedIn-native outreach via the browser, with the same safety rails:
 All state lives in SQLite outreach_* tables (migration v3).
 
 ACTUAL BROWSER ACTIONS:
-  * Opens LinkedIn feed
-  * Finds and clicks Connect / Message buttons on post authors
+  * Opens https://www.linkedin.com/mynetwork/grow/ (reliable Connect buttons)
+  * Finds and clicks Connect buttons on "People you may know" cards
+  * Extracts name, title, company from each card
   * Records only genuinely sent messages in SQLite
 """
 
@@ -48,12 +49,12 @@ log = logging.getLogger(__name__)
 class OutreachContact:
     """One person we may reach out to."""
     kind: str              # connection | dm | followup | referral
-    value: str             # email | linkedin_profile_url | phone
+    value: str             # linkedin_profile_url | email | phone
     name: str = ""
     company: str = ""
     role: str = ""
-    source_type: str = ""  # post | feed | jobs | manual
-    source_id: str = ""    # post_id or job_id
+    source_type: str = ""  # feed | jobs | manual | network
+    source_id: str = ""    # profile_url or post_id
     experiment_id: str = "default"
     variant: int = 1
 
@@ -88,7 +89,7 @@ class NetworkAutomation:
     All state tracked in SQLite outreach_* tables.
     """
 
-    FEED_URL = "https://www.linkedin.com/feed/"
+    GROW_URL = "https://www.linkedin.com/mynetwork/grow/"
 
     def __init__(self, ctx: AppContext):
         self.ctx, self.driver = ctx, ctx.driver
@@ -151,56 +152,72 @@ class NetworkAutomation:
         buttons: list[Any] = []
         try:
             els = self.driver.execute_script(
-                """return Array.from(document.querySelectorAll('button'))
-                   .filter(b => b.innerText.includes('Connect') ||
-                              b.getAttribute('aria-label')?.includes('Connect'))""")
+                "return Array.from(document.querySelectorAll('button'))"
+                ".filter(b => b.innerText.trim() === 'Connect')")
             buttons = list(els or [])
         except WebDriverException:
             pass
         return buttons
 
-    def _find_message_buttons(self) -> list[Any]:
-        """Find all 'Message' buttons on current LinkedIn page."""
-        buttons: list[Any] = []
+    def _extract_card_info(self, btn_el: Any) -> tuple[str, str, str]:
+        """Extract (name, role, company) from the card containing a Connect button."""
         try:
-            els = self.driver.execute_script(
-                """return Array.from(document.querySelectorAll('button'))
-                   .filter(b => b.innerText.includes('Message') ||
-                              b.getAttribute('aria-label')?.includes('Message'))""")
-            buttons = list(els or [])
+            card_text = self.driver.execute_script(
+                "const btn = arguments[0];"
+                "let parent = btn.parentElement;"
+                "for (let i = 0; i < 10 && parent; i++) {"
+                "  const text = parent.innerText || '';"
+                "  if (text.includes('Connect') && text.length > 30 && text.length < 400) {"
+                "    return text;"
+                "  }"
+                "  parent = parent.parentElement;"
+                "}"
+                "return '';", btn_el) or ""
         except WebDriverException:
-            pass
-        return buttons
+            return "", "", ""
+
+        # Parse: name\nrole\ncompany\nConnect
+        lines = [line.strip() for line in card_text.split("\n") if line.strip()]
+        # Remove non-name lines
+        filtered = []
+        for line in lines:
+            if line in ("Connect", "Follow", "Message"):
+                continue
+            if "mutual connection" in line.lower():
+                continue
+            if "Show all" in line:
+                continue
+            filtered.append(line)
+        lines = filtered
+
+        if not lines:
+            return "", "", ""
+
+        name = lines[0] if len(lines) > 0 else ""
+        role = lines[1] if len(lines) > 1 else ""
+        company = lines[2] if len(lines) > 2 else ""
+
+        return name, role, company
 
     # -------------------------------------------------------------- main loop --
 
     def run(self, limit: int | None = None) -> OutreachResult:
-        """Open LinkedIn feed, find hiring posts, send connection requests / DMs.
+        """Open LinkedIn 'Grow your network' page, send connection requests.
 
         Only counts a contact as 'contacted' if the browser actually clicked
-        a button on LinkedIn. Database records are created only after a
-        successful click.
+        a Connect button. Database records are created only after success.
         """
         result = OutreachResult()
 
-        # Open LinkedIn feed
-        log.info("Opening LinkedIn feed: %s", self.FEED_URL)
-        self.driver.get(self.FEED_URL)
-
-        # Wait for page to load, detect checkpoint/login wall
+        # Open LinkedIn Grow page (reliable Connect buttons)
+        log.info("Opening LinkedIn grow page: %s", self.GROW_URL)
+        self.driver.get(self.GROW_URL)
         time.sleep(5)
-        current_url = self.driver.current_url
-        page_text = ""
-        try:
-            page_text = self.driver.execute_script(
-                "return document.body.innerText || ''") or ""
-        except WebDriverException:
-            page_text = ""
 
-        # Detect LinkedIn checkpoint/login wall
+        # Detect login/checkpoint wall
+        current_url = self.driver.current_url
         blocked_markers = ("login", "authwall", "checkpoint", "challenge", "uas/")
-        if any(m in current_url for m in blocked_markers) or \
-           any(m in page_text.lower() for m in ("sign in", "verify", "challenge")):
+        if any(m in current_url for m in blocked_markers):
             log.warning(
                 "LinkedIn checkpoint/login wall detected at %s. "
                 "Manual login required before automation can proceed.",
@@ -208,86 +225,54 @@ class NetworkAutomation:
             result.failed = 1
             return result
 
-        log.info("LinkedIn feed loaded successfully")
-
         processed = 0
         max_posts = limit or 50
+        scroll_rounds = 0
+        max_scroll_rounds = 10
 
-        # Scan posts on the feed page
-        while processed < max_posts:
-            # Find posts on the current view
-            posts = self.driver.execute_script(
-                "return Array.from(document.querySelectorAll("
-                "'div[data-urn*=\"urn:li:activity\"],article,div.dr0ayq.dr0kdh,"
-                "div.dr0hiu.dr0hr1.dr0kdh,section.dr0hiu.dr0kdh'))"
-                ".slice(0, 50)")
-            if not posts:
-                log.debug("No posts found on feed, scrolling for more")
+        while processed < max_posts and scroll_rounds < max_scroll_rounds:
+            # Find Connect buttons
+            buttons = self._find_connect_buttons()
+            if not buttons:
+                log.debug("No Connect buttons found, scrolling for more")
                 self.driver.execute_script("window.scrollBy(0, window.innerHeight);")
                 time.sleep(2)
+                scroll_rounds += 1
                 continue
 
             new_found = 0
-            for post_el in posts:
+            for btn in buttons:
                 if processed >= max_posts:
                     break
 
-                # Get post text to check if it's hiring-related
-                try:
-                    post_text = self.driver.execute_script(
-                        "return arguments[0].innerText || ''", post_el) or ""
-                except WebDriverException:
-                    continue
-
-                if not self._is_hiring_signal(post_text):
-                    continue
-
-                # Find the author name
-                try:
-                    author = self.driver.execute_script(
-                        "const a = arguments[0].querySelector("
-                        "'span[aria-hidden=\"true\"],.update-components-actor__name');"
-                        "return a ? a.innerText.trim() : '';", post_el) or ""
-                except WebDriverException:
-                    author = ""
-
-                # Find connect/message buttons within this post
-                try:
-                    buttons = self.driver.execute_script(
-                        "return Array.from(arguments[0].querySelectorAll('button'))"
-                        ".filter(b => b.innerText.includes('Connect') ||"
-                        "b.innerText.includes('Message') ||"
-                        "b.getAttribute('aria-label')?.includes('Connect') ||"
-                        "b.getAttribute('aria-label')?.includes('Message'));",
-                        post_el)
-                except WebDriverException:
-                    buttons = []
-
-                if not buttons:
-                    continue
-
-                # Create contact record
-                post_urn = ""
-                try:
-                    post_urn = post_el.get_attribute("data-urn") or ""
-                except WebDriverException:
-                    pass
+                # Extract name, role, company from card
+                name, role, company = self._extract_card_info(btn)
+                value = name.lower().replace(" ", "-") if name else f"profile:{processed}"
 
                 contact = OutreachContact(
                     kind="connection",
-                    value=post_urn or f"post:{processed}",
-                    name=author,
+                    value=value,
+                    name=name,
+                    company=company,
+                    role=role,
                     source_type="feed",
-                    source_id=post_urn,
-                    experiment_id=experiment_id_for("connection", post_urn or str(processed)),
-                    variant=variant_for(experiment_id_for("connection", post_urn or str(processed)), 3),
+                    source_id=value,
+                    experiment_id=experiment_id_for("connection", value),
+                    variant=variant_for(experiment_id_for("connection", value), 3),
                 )
 
+                # Dedup check
                 if self._already_contacted(contact.kind, contact.value):
+                    result.skipped += 1
                     continue
 
-                # Click the first connect/message button
-                clicked = self._click(buttons[0])
+                # Daily cap check
+                if self._daily_cap_reached(contact.kind):
+                    result.daily_cap_reached += 1
+                    continue
+
+                # Click Connect
+                clicked = self._click(btn)
 
                 self._record_contact(contact)
                 processed += 1
@@ -318,10 +303,10 @@ class NetworkAutomation:
                          f"LinkedIn {contact.kind}", variant_text,
                          "sent", datetime.now().isoformat()))
                     self.repo.conn.commit()
-                    log.info("Contacted %s via %s", contact.value, contact.kind)
+                    log.info("Connected with %s (%s)", contact.name, contact.value)
                 else:
                     result.failed += 1
-                    log.debug("Failed to click button for %s", contact.value)
+                    log.debug("Failed to click Connect for %s", contact.value)
 
                 # Spacing delay between contacts
                 if processed < max_posts:
@@ -329,9 +314,10 @@ class NetworkAutomation:
                     time.sleep(delay)
 
             if new_found == 0:
-                # No new hiring posts found, scroll for more
+                # Scroll for more people
                 self.driver.execute_script("window.scrollBy(0, window.innerHeight);")
                 time.sleep(2)
+                scroll_rounds += 1
 
         result.skipped = max(0, processed - result.contacted - result.failed)
         return result
@@ -354,7 +340,7 @@ class NetworkAutomation:
         return any(sig in t for sig in signals)
 
     def _send_outreach(self, contact: OutreachContact) -> bool:
-        """Legacy method kept for compatibility. Use run() instead."""
+        """Legacy method kept for compatibility."""
         try:
             contact_row = self.repo.conn.execute(
                 "SELECT id FROM outreach_contacts WHERE value=? AND kind=?",

@@ -189,7 +189,8 @@ SUCCESS_TEXTS = ("application sent", "your application was sent")
 
 # ---------------------------------------------------------------- post search
 POST_CONTAINERS = [
-    # current LinkedIn post-search containers: div.dr0ayq.dr0kdh matches most posts
+    # current LinkedIn post-search containers: div.ekfayq.ekfkdh matches most posts (Nov 2026) earlier    CSS("div.dr0ayq.dr0kdh"),
+    CSS("div.ekfayq.ekfkdr"),
     CSS("div.dr0ayq.dr0kdh"),
     # variant with dr0hr1
     CSS("div.dr0hiu.dr0hr1.dr0kdh"),
